@@ -1,10 +1,10 @@
 "use client";
 
-import { useContext, useState } from "react";
+import { useContext, useState, type ReactNode } from "react";
 import { CheckIcon, SettingsIcon, XIcon } from "lucide-react";
 import { JobsContext } from "@/components/jobs-context";
 import { ChatActionsContext } from "@/components/chat";
-import { isModelsRefusal, isProviderKeyRefusal, type JobKind, type JobRecord } from "@/src/core";
+import { AWAITING_ANSWER_ACTIVITY, isModelsRefusal, isProviderKeyRefusal, type JobKind, type JobRecord } from "@/src/core";
 import { BrailleSpinner } from "@/components/braille-spinner";
 
 /**
@@ -15,6 +15,10 @@ import { BrailleSpinner } from "@/components/braille-spinner";
  *
  *   job unknown → "dispatched" pulse (the jobs feed hasn't seen it yet)
  *   running     → live activity card (activity line + elapsed)
+ *   held        → finished, waiting for the learner's answer to an open
+ *                 question (AWAITING_ANSWER_ACTIVITY): a quiet "ready"
+ *                 line, or the result itself when the teacher marked the
+ *                 call showBeforeAnswer (the figure/demo card passes it in)
  *   done/error  → quiet one-liner ("delivered" / "failed") — the artifact
  *                 itself arrives in the steer message right below, so the
  *                 box must not duplicate it. A failed (or aborted) figure
@@ -41,11 +45,24 @@ export function latestJobFor(jobs: readonly JobRecord[], toolCallId: string): Jo
 /** The kinds the learner can retry from the card (server/jobs.ts retryJob). */
 const RETRYABLE: ReadonlySet<JobKind> = new Set(["visual", "demo"]);
 
-export function DispatchCard({ toolCallId, kind }: { toolCallId: string; kind: JobKind }) {
+export function DispatchCard({
+	toolCallId,
+	kind,
+	showEarly,
+}: {
+	toolCallId: string;
+	kind: JobKind;
+	/** The teacher marked this call to show before the answer: renders the
+	 *  finished result while it waits (the figure/demo card's own view). */
+	showEarly?: (result: unknown) => ReactNode;
+}) {
 	const jobs = useContext(JobsContext);
 	const job = latestJobFor(jobs, toolCallId);
 	const label = KIND_LABEL[kind];
 
+	if (job?.status === "running" && job.activity === AWAITING_ANSWER_ACTIVITY && job.result !== undefined) {
+		return <DispatchHeldCard job={job} label={label} showEarly={showEarly} />;
+	}
 	if (!job || job.status === "running") {
 		return <DispatchActivityCard job={job} label={label} />;
 	}
@@ -73,6 +90,38 @@ export function DispatchCard({ toolCallId, kind }: { toolCallId: string; kind: J
 			{failed && RETRYABLE.has(job.kind) && <RetryButton jobId={job.id} />}
 		</div>
 	);
+}
+
+/** A finished result held until the learner answers the open question.
+ *  A failed one says so now (the teacher hears after the answer); a
+ *  showBeforeAnswer one shows itself; anything else is a quiet "ready". */
+function DispatchHeldCard({
+	job,
+	label,
+	showEarly,
+}: {
+	job: JobRecord;
+	label: string;
+	showEarly?: (result: unknown) => ReactNode;
+}) {
+	const failed = typeof job.error === "string" && job.error.length > 0;
+	const line = (icon: ReactNode, text: string) => (
+		<div className="flex items-center gap-2 text-xs text-muted-foreground" data-testid="dispatch-held">
+			{icon}
+			<span className="font-medium uppercase tracking-wide">{label}</span>
+			<span>{text}</span>
+		</div>
+	);
+	if (failed) return line(<XIcon className="size-3.5 text-red-500" />, "failed · your tutor hears after you answer the question");
+	if (showEarly) {
+		return (
+			<div className="flex flex-col gap-2" data-testid="dispatch-early">
+				{line(<CheckIcon className="size-3.5" />, "ready · shown now to help with the question; your tutor sees it after you answer")}
+				{showEarly(job.result)}
+			</div>
+		);
+	}
+	return line(<CheckIcon className="size-3.5" />, "ready · arrives after you answer the question");
 }
 
 /** Retry a failed figure or demo. On success the jobs feed brings the new

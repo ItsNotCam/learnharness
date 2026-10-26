@@ -7,7 +7,7 @@ import { InvertDiscIcon } from "@/components/artifacts/invert-disc";
 import { ChatActionsContext } from "@/components/chat";
 import { downloadFile, slugFilename } from "@/components/artifacts/download";
 import { DispatchCard } from "@/components/artifacts/dispatch-card";
-import type { ArtifactPartProps, DemoResult } from "@/src/core";
+import { showsBeforeAnswer, type ArtifactPartProps, type DemoResult } from "@/src/core";
 
 /**
  * Demo artifact card (W6): while the part is input-available, a job activity
@@ -85,7 +85,13 @@ export function reduceDemoBridgeState(state: DemoBridgeState, data: unknown): De
  * itself renders from the steer message via DemoOutputCard. */
 export function DemoCard({ part }: ArtifactPartProps) {
 	if (part.state !== "output-available") return null;
-	return <DispatchCard toolCallId={part.toolCallId} kind="demo" />;
+	return (
+		<DispatchCard
+			toolCallId={part.toolCallId}
+			kind="demo"
+			showEarly={showsBeforeAnswer(part.input) ? (result) => <DemoOutputCard output={result} /> : undefined}
+		/>
+	);
 }
 
 /** The demo artifact — exported: the steer card renders the delivered

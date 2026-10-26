@@ -40,6 +40,16 @@ export const researchInputSchema = Type.Object({
 	),
 });
 
+/** The teacher's "show it while they answer" flag (figures and demos). */
+const showBeforeAnswerField = Type.Optional(
+	Type.Boolean({
+		description:
+			"Set true ONLY when the learner should see this while answering the question you leave open: it helps them read or " +
+			"answer it WITHOUT giving the answer away. Omit it otherwise: a finished result waits until they have answered. " +
+			"Anything that shows what the question asks for (the point, value or outcome they must work out) never gets it.",
+	}),
+);
+
 export const demoInputSchema = Type.Object({
 	title: Type.String({ description: "Short title for the demo card, e.g. 'Damped harmonic oscillator'." }),
 	brief: Type.String({
@@ -47,6 +57,7 @@ export const demoInputSchema = Type.Object({
 			"Precise brief for the builder: the concept, the parameters/controls and what each does, the interactions, and the visual style. " +
 			"The builder sees NOTHING else of the lesson — include everything it needs, including necessary formulas and constants.",
 	}),
+	showBeforeAnswer: showBeforeAnswerField,
 });
 
 export const visualInputSchema = Type.Object({
@@ -55,6 +66,7 @@ export const visualInputSchema = Type.Object({
 			"Precise brief for ONE static figure: exactly what it must show — coordinates, labels, proportions, orientation. " +
 			"The maker sees NOTHING else of the lesson; a wrong or vague brief produces a wrong figure.",
 	}),
+	showBeforeAnswer: showBeforeAnswerField,
 });
 
 export const pdfInputSchema = Type.Object({

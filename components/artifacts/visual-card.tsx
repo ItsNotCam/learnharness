@@ -8,7 +8,7 @@ import { Toggle } from "@/components/settings/controls";
 import { useSessionMermaid } from "@/components/session-overlay";
 import { downloadFile } from "@/components/artifacts/download";
 import { DispatchCard } from "@/components/artifacts/dispatch-card";
-import type { ArtifactPartProps, VisualResult } from "@/src/core";
+import { showsBeforeAnswer, type ArtifactPartProps, type VisualResult } from "@/src/core";
 import { SvgImage } from "./svg-image";
 
 /**
@@ -36,7 +36,13 @@ export function svgNaturalWidth(svg: string): number | null {
 
 export function VisualCard({ part }: ArtifactPartProps) {
 	if (part.state !== "output-available") return null;
-	return <DispatchCard toolCallId={part.toolCallId} kind="visual" />;
+	return (
+		<DispatchCard
+			toolCallId={part.toolCallId}
+			kind="visual"
+			showEarly={showsBeforeAnswer(part.input) ? (result) => <VisualOutputCard output={result} /> : undefined}
+		/>
+	);
 }
 
 /** The figure itself — exported: the steer card renders the delivered artifact. */

@@ -201,6 +201,10 @@ export interface DemoToolInput {
 	title: string;
 	/** Precise brief: concept, parameters/interactions, visual style. */
 	brief: string;
+	/** The teacher's call: the learner may see this while answering the
+	 *  open question (it helps without giving the answer away). Absent or
+	 *  false = a finished result waits for the answer, like every steer. */
+	showBeforeAnswer?: boolean;
 }
 
 export interface DemoResult {
@@ -215,6 +219,21 @@ export interface DemoResult {
 export interface VisualToolInput {
 	/** Precise brief for ONE visual (what it must show, exactly). */
 	brief: string;
+	/** The teacher's call: the learner may see this while answering the
+	 *  open question (it helps without giving the answer away). Absent or
+	 *  false = a finished result waits for the answer, like every steer. */
+	showBeforeAnswer?: boolean;
+}
+
+/** A finished job's activity while its result waits for the learner's
+ *  answer to an open question (the wake pipeline can't run a turn until
+ *  then). The dispatch card reads it to say "ready" instead of spinning. */
+export const AWAITING_ANSWER_ACTIVITY = "ready: arrives after your answer";
+
+/** Did the teacher mark this figure/demo call to show before the answer?
+ *  Pure; anything but `showBeforeAnswer: true` reads as no. */
+export function showsBeforeAnswer(input: unknown): boolean {
+	return typeof input === "object" && input !== null && (input as { showBeforeAnswer?: unknown }).showBeforeAnswer === true;
 }
 
 export interface VisualResult {
