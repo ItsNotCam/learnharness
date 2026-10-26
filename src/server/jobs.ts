@@ -56,6 +56,7 @@
  */
 
 import {
+	AWAITING_ANSWER_ACTIVITY,
 	buildAbortSteer,
 	buildSubagentSteer,
 	isSubagentFailure,
@@ -704,7 +705,10 @@ async function waitForIdle(chatId: string): Promise<void> {
 	for (;;) {
 		const record = stores.chatStore.getChat(chatId);
 		if (!record) return;
-		const blocked = isTurnRunning(chatId) || danglingQuestionOf(record.messages) !== null;
+		const questionOpen = danglingQuestionOf(record.messages) !== null;
+		// Every poll: a result queued while we wait needs its mark too.
+		markQueuedResults(chatId, questionOpen);
+		const blocked = isTurnRunning(chatId) || questionOpen;
 		if (!blocked) {
 			await delay(GRACE_MS);
 			const recheck = stores.chatStore.getChat(chatId);
@@ -717,6 +721,20 @@ async function waitForIdle(chatId: string): Promise<void> {
 			}
 		}
 		await delay(POLL_MS);
+	}
+}
+
+/** Tell the dock why finished results are waiting: an open question holds
+ *  them until the learner answers (AWAITING_ANSWER_ACTIVITY, the card's
+ *  "ready" line), otherwise they're being delivered. Writes on change only
+ *  (each write announces jobs-changed to the view). */
+function markQueuedResults(chatId: string, awaitingAnswer: boolean): void {
+	const activity = awaitingAnswer ? AWAITING_ANSWER_ACTIVITY : "delivering result";
+	for (const entry of state().queues.get(chatId) ?? []) {
+		const jobId = jobIdOf(entry.steer);
+		const job = jobId ? stores.jobStore.getJob(jobId) : null;
+		if (!job || job.status !== "running" || job.result === undefined || job.activity === activity) continue;
+		stores.jobStore.updateJob(job.id, { activity });
 	}
 }
 
