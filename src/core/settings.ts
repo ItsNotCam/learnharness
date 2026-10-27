@@ -333,6 +333,9 @@ export interface AppearanceSettings {
 	proseFontSize?: number;
 	/** Session names in CMU Serif (default true — today's look). */
 	sessionNameSerif?: boolean;
+	/** Math (KaTeX) in the theme's math color, --lh-math (default false:
+	 *  the text color). */
+	mathThemeColors?: boolean;
 	mdRendering?: MdRenderingSettings;
 	/** The uploaded theme mode "custom" shows (an id in the themes store,
 	 *  core/vscode-theme.ts). null/absent = none picked. */
@@ -431,6 +434,7 @@ export interface FactorySettings {
 		fontFamily: string | null;
 		proseFontSize: number;
 		sessionNameSerif: boolean;
+		mathThemeColors: boolean;
 		mdRendering: {
 			headingWeight: number;
 			boldColor: string | null;
@@ -451,6 +455,7 @@ export const FACTORY_SETTINGS: FactorySettings = {
 		fontFamily: null, // Source Sans 3
 		proseFontSize: 16,
 		sessionNameSerif: true,
+		mathThemeColors: false,
 		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null },
 		customThemeId: null,
 	},
@@ -604,6 +609,8 @@ function sanitizeAppearance(raw: Record<string, unknown>): AppearanceSettings {
 	}
 	const sessionNameSerif = boolOrDrop(raw.sessionNameSerif);
 	if (sessionNameSerif !== undefined) out.sessionNameSerif = sessionNameSerif;
+	const mathThemeColors = boolOrDrop(raw.mathThemeColors);
+	if (mathThemeColors !== undefined) out.mathThemeColors = mathThemeColors;
 	if (raw.mdRendering !== undefined) out.mdRendering = sanitizeMdRendering(raw.mdRendering);
 	if (raw.customThemeId !== undefined) {
 		out.customThemeId = typeof raw.customThemeId === "string" && CUSTOM_THEME_ID.test(raw.customThemeId) ? raw.customThemeId : null;

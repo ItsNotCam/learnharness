@@ -74,8 +74,9 @@ describe("built-in themes and the stylesheet", () => {
 		}
 	});
 
-	it("paints KaTeX inside teaching prose with it", () => {
-		assert.match(css, /\.lh-prose \.katex \{\s*color: var\(--lh-math\);\s*\}/);
+	it("paints KaTeX inside teaching prose with it when the setting turns it on", () => {
+		// The setting sets --lh-math-ink to var(--lh-math) (math-theme-toggle.test.tsx).
+		assert.match(css, /\.lh-prose \.katex \{\s*color: var\(--lh-math-ink, currentColor\);\s*\}/);
 	});
 
 	it("renders inline and display math inside the prose wrapper", () => {
