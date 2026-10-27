@@ -49,6 +49,8 @@
 	--destructive: oklch(0.704 0.191 22.216);
 	/* Inline `code` (md-blocks): a soft red on the dark gray. */
 	--inline-code: #f47067;
+	/* Math (KaTeX in markdown): the code blocks' number color (github-dark). */
+	--lh-math: #79b8ff;
 	--border: #434343;
 	--input: #434343;
 	--ring: #8d8d8d;
@@ -107,6 +109,8 @@
 	--destructive: oklch(0.704 0.191 22.216);
 	/* Inline `code` (md-blocks): a soft red on the dark gray. */
 	--inline-code: #f47067;
+	/* Math (KaTeX in markdown): the code blocks' number color (github-dark). */
+	--lh-math: #79b8ff;
 	--border: #434343;
 	--input: #434343;
 	--ring: #8d8d8d;
@@ -163,6 +167,8 @@
 	--destructive: #b3372a;
 	/* Inline `code`: a deeper red that reads on ivory. */
 	--inline-code: #b3372a;
+	/* Math: the code blocks' number color (github-light). */
+	--lh-math: #005cc5;
 	--border: #dacfbb;
 	--input: #d2c6af;
 	--ring: #a35a46;
@@ -213,6 +219,9 @@
 	--destructive: #e06c75;
 	/* Inline `code`: One Dark's red. */
 	--inline-code: #e06c75;
+	/* Math: One Dark's blue (its accent, as on buttons), so math reads blue
+	   in every built-in theme. */
+	--lh-math: #61afef;
 	--border: #3e4452;
 	--input: #3e4452;
 	--ring: #528bff;
@@ -346,6 +355,15 @@ body {
 
 .lh-prose :where(em, i) {
 	color: var(--lh-ink-italic);
+}
+
+/* Math in teaching prose (inline and display KaTeX) takes --lh-math: a
+   blue in each built-in theme, an uploaded theme's number color (vscode-
+   theme.ts mathColor). A formula's own \color{} and KaTeX's error red
+   are inline styles and still win. Chrome glyphs (latex-glyph.tsx) live
+   outside .lh-prose and keep the text color. */
+.lh-prose .katex {
+	color: var(--lh-math);
 }
 
 /* Markdown lists indent from the prose edge (owner ask, 2026-09-24):
