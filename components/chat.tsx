@@ -2164,19 +2164,37 @@ function DockOverlay({
 	// 2026-10-05): the old fixed fractions (55dvh / 40vh) cut long problems
 	// off absurdly short — the cap is now the AVAILABLE COLUMN (the
 	// scroller already starts below the top bar) minus a 2rem breathing
-	// gap, carried as --dock-max-h for the docks' scroll areas.
+	// gap. The question/problem dock itself gets what's left of that once
+	// everything around the shell is placed (the stats row and padding
+	// below it, a reply chat or notices above it), carried as --dock-max-h
+	// on the shell: the WHOLE dock caps there and only its question area
+	// scrolls, so the dock never runs off the top of the column.
 	const [sbInset, setSbInset] = useState(0);
 	const [dockMaxH, setDockMaxH] = useState<number | null>(null);
+	const [shellMaxH, setShellMaxH] = useState<number | null>(null);
 	useEffect(() => {
 		const el = scrollRef.current;
 		if (!el) return;
 		const measure = () => {
 			setSbInset(Math.round((el.offsetWidth - el.clientWidth) / 2));
-			setDockMaxH(Math.max(el.clientHeight - 32, 160));
+			const column = Math.max(el.clientHeight - 32, 160);
+			setDockMaxH(column);
+			// Everything in the block but the shell: independent of the shell's
+			// own height, so capping the shell never feeds back into this.
+			const block = blockRef.current;
+			const shell = shellRef.current;
+			const chrome = block && shell ? block.offsetHeight - shell.offsetHeight : 0;
+			setShellMaxH(Math.max(column - chrome, 160));
 		};
 		measure();
-		window.addEventListener("resize", measure);
-		return () => window.removeEventListener("resize", measure);
+		// The column changes with the window and with anything that takes
+		// height from the scroller (the Find bar opening). The chrome changes
+		// as notices, a reply chat or the stats row come and go (and the
+		// block resizes with the shell, which measures the same).
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		if (blockRef.current) ro.observe(blockRef.current);
+		return () => ro.disconnect();
 	}, [scrollRef]);
 
 	// GROWTH MUTE (owner round, 2026-10-05 — the generation churn): during a
@@ -2449,7 +2467,7 @@ function DockOverlay({
 	return (
 		<div className="pointer-events-none absolute inset-x-0 bottom-0" style={{ right: sbInset }}>
 			<div className="h-24 bg-gradient-to-t from-background via-background/85 to-transparent" />
-			<div ref={blockRef} className="relative bg-background pb-5" style={{ "--dock-max-h": dockMaxH ? `${dockMaxH}px` : undefined } as React.CSSProperties}>
+			<div ref={blockRef} className="relative bg-background pb-5">
 				{/* The dock column. While the side chat is open on a wide band it
 				    widens to the band's full width (2rem padding each side) and
 				    the question slides left to make room: max-width, padding and
@@ -2506,14 +2524,9 @@ function DockOverlay({
 					<div
 						ref={shellRef}
 						className="pointer-events-auto overflow-hidden rounded-2xl border bg-card shadow-lg"
-						// With a reply chat above, the question area's cap shrinks by
-						// the panel (and its gap) and keeps 15rem for the answer row,
-						// as the inline question chat does: the dock stays on screen.
-						style={
-							replyAboveH !== null && dockMaxH
-								? ({ "--dock-max-h": `max(8rem, ${dockMaxH - replyAboveH - 8}px - 15rem)` } as React.CSSProperties)
-								: undefined
-						}
+						// The dock's cap: the column less everything around the shell
+						// (a reply chat above included). The shell's border is 2px.
+						style={shellMaxH ? ({ "--dock-max-h": `${shellMaxH - 2}px` } as React.CSSProperties) : undefined}
 					>
 						<div
 						ref={contentRef}

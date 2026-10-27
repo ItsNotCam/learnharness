@@ -556,20 +556,16 @@ function QuestionDockForm({
 	}, [kbdIdx]);
 
 	return (
-		<div ref={rootRef} data-testid="question-dock">
-			{/* Question area — scrolls internally if very tall; the bottom row stays put.
-			    Capped by the measured column (--dock-max-h; the old fixed 55dvh cut
-			    long questions short — owner round, 2026-10-05). */}
-			{/* With the side chat inline, the area also reserves room for the
-			    answer box below it (15rem), so the whole dock stays inside the
-			    column and the question's top can always be scrolled back to. */}
-			<div
-				data-session-find-root=""
-				className={cn(
-					"overflow-y-auto px-4 pt-3",
-					clarifyInline ? "max-h-[max(8rem,calc(var(--dock-max-h,55dvh)_-_15rem))]" : "max-h-[var(--dock-max-h,55dvh)]",
-				)}
-			>
+		// The WHOLE dock is capped by the measured column (--dock-max-h; the
+		// old fixed 55dvh cut long questions short — owner round, 2026-10-05),
+		// and only the question area gives way: it shrinks and scrolls while
+		// the confidence row and the answer box keep their size. Capping the
+		// question area alone let a tall question plus the answer box overflow
+		// the column, pushing the question's top off screen with nothing left
+		// to scroll (an inline side chat or a narrow column made it common).
+		<div ref={rootRef} data-testid="question-dock" className="flex max-h-[var(--dock-max-h,55dvh)] flex-col">
+			{/* Question area — scrolls internally when the dock is full; the bottom rows stay put. */}
+			<div data-session-find-root="" className="min-h-0 overflow-y-auto px-4 pt-3">
 				<div className="mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
 					<span className="min-w-0">
 					{toolName === "probe"
@@ -778,7 +774,7 @@ function QuestionDockForm({
 				GRAYS it out — the layout holds, no value is sent, the IDK
 				signal stands alone. */}
 			{kind === "quiz" && (
-				<div className="border-t border-border/60 px-4 py-2.5">
+				<div className="shrink-0 border-t border-border/60 px-4 py-2.5">
 					<div className="flex items-center gap-3">
 						<span
 							className={cn(
@@ -861,7 +857,7 @@ function QuestionDockForm({
 			    is for dumping, soon dictated; the button submits); text mode
 			    keeps "Your answer" with Enter-to-submit. */}
 			<form
-				className="border-t border-border/60 p-1.5"
+				className="shrink-0 border-t border-border/60 p-1.5"
 				onSubmit={(e) => {
 					e.preventDefault();
 					submit();
