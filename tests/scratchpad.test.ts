@@ -59,6 +59,16 @@ describe("shapes", () => {
 		assert.ok(close(Math.hypot(to.x - 100, to.y - 100), Math.hypot(100, 8)));
 	});
 
+	it("Alt centers every shape on the press point, the far corner mirrored", () => {
+		assert.deepEqual(constrainShape("rect", from, { x: 130, y: 160 }, false, true), { from: { x: 70, y: 40 }, to: { x: 130, y: 160 } });
+		assert.deepEqual(constrainShape("ellipse", from, { x: 130, y: 160 }, true, true), { from: { x: 40, y: 40 }, to: { x: 160, y: 160 } }, "Alt+Shift: a circle about it");
+		const tri = constrainShape("triangle", from, { x: 140, y: 150 }, true, true);
+		assert.ok(close(tri.to.x - tri.from.x, 80) && close(tri.to.y - tri.from.y, 40 * Math.sqrt(3)), "still equilateral, twice the size");
+		const line = constrainShape("line", from, { x: 200, y: 108 }, true, true);
+		assert.ok(close(line.from.y, 100) && close(line.to.y, 100) && close(line.from.x + line.to.x, 200), "snapped, extending both ways");
+		assert.deepEqual(constrainShape("arrow", from, { x: 150, y: 120 }, false, true).to, { x: 150, y: 120 }, "the head stays at the dragged end");
+	});
+
 	it("puts the right angle at the bottom left whichever way you drag", () => {
 		for (const to of [{ x: 200, y: 200 }, { x: 0, y: 0 }]) {
 			const g = shapeGeometry("rightTriangle", from, to, 4);
