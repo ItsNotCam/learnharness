@@ -185,6 +185,32 @@ describe("ScratchpadPanel", () => {
 		assert.match(el("scratchpad-unsaved").textContent ?? "", /Not saved/);
 	});
 
+	it("docks into the dock's right column when a side chat gives it up", async () => {
+		Object.assign(globalThis, { MutationObserver: (dom.window as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver });
+		const column = document.createElement("div");
+		column.setAttribute("data-dock-side-column", "");
+		(column as unknown as { getBoundingClientRect: () => object }).getBoundingClientRect = () => ({ left: 900, top: 300, right: 1600, bottom: 760, width: 700, height: 460 });
+		const sideChat = document.createElement("div");
+		sideChat.setAttribute("data-clarifier-panel", "");
+		column.appendChild(sideChat);
+		document.body.appendChild(column);
+		try {
+			await mount();
+			await act(async () => new Promise((r) => setTimeout(r, 450)));
+			const panel = el("scratchpad");
+			assert.notEqual(panel.style.left, "900px", "the side chat holds the column: the scratchpad floats");
+			await act(async () => {
+				sideChat.remove();
+				await new Promise((r) => setTimeout(r, 450));
+			});
+			assert.equal(panel.style.left, "900px", "docked at the column's left edge");
+			assert.equal(panel.style.width, "700px", "the column's full width");
+			assert.equal(panel.style.top, "320px", "standing on the column's bottom edge");
+		} finally {
+			column.remove();
+		}
+	});
+
 	it("closes on Esc", async () => {
 		await mount();
 		await key("Escape");

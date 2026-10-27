@@ -10,6 +10,7 @@ import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from "
 import { usePathname } from "next/navigation";
 import { kbdEventForAction } from "@/src/core";
 import { drawingKeyForPath } from "./model";
+import { setScratchpadOpen } from "./open-store";
 import { loadScratchpadWindow, saveScratchpadWindow } from "./state";
 
 const ScratchpadPanel = lazy(() => import("./scratchpad-panel").then((m) => ({ default: m.ScratchpadPanel })));
@@ -49,6 +50,8 @@ export function ScratchpadHost() {
 	}, []);
 	useEffect(() => {
 		if (open !== null) saveScratchpadWindow({ open });
+		// The chat dock makes room while it's open (chat.tsx).
+		setScratchpadOpen(open === true);
 	}, [open]);
 	if (!open) return null;
 	return (

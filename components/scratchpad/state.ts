@@ -75,6 +75,24 @@ export function saveDrawing(key: string, items: readonly PadItem[]): boolean {
 	}
 }
 
+/** Where the scratchpad goes in the dock's freed right column (the
+ *  answer box slid left for it, chat.tsx): the column's full width, its
+ *  remembered height, standing on the column's bottom edge and rising above
+ *  it like the side chat. Null when the column is too narrow to hold it.
+ *  Pure, for tests. */
+export function sideColumnSpot(
+	column: { left: number; width: number; bottom: number },
+	size: { width: number; height: number },
+	viewport: { width: number; height: number },
+): { position: { x: number; y: number }; size: { width: number; height: number } } | null {
+	if (column.width < MIN_SIZE.width) return null;
+	const fitted = clampSize({ width: column.width, height: size.height }, viewport);
+	return {
+		position: { x: Math.round(column.left), y: Math.round(Math.max(8, column.bottom - fitted.height)) },
+		size: fitted,
+	};
+}
+
 /** The window's size kept inside the viewport (with a margin) and above
  *  the minimum. Pure, for tests. */
 export function clampSize(
