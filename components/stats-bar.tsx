@@ -5,6 +5,7 @@ import { subscriptionLabels, subscriptionLabel, type SessionPricing, type TurnUs
 import { formatTokens, formatUsd, planCostLabel, prettyModel } from "@/components/usage-format";
 import { ModelControl, catalogLimits, useModelCatalog } from "@/components/model-picker";
 import { CalculatorToggle } from "@/components/calculator/calculator-toggle";
+import { ScratchpadToggle } from "@/components/scratchpad/scratchpad-toggle";
 
 export function formatContextMeasurement(tokens: number | null, limit: number | null): string {
 	const numerator = tokens === null ? "?" : formatTokens(tokens);
@@ -195,6 +196,7 @@ export function StatsBar({
 			    the ACTUAL models billed, regardless of what the picker says. */}
 			<div className="flex items-center gap-1">
 				<CalculatorToggle />
+				<ScratchpadToggle />
 				<ModelControl chatId={chatId} onModelChange={setSelectedModel} />
 			</div>
 		</div>
