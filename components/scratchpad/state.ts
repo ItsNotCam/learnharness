@@ -1,57 +1,74 @@
 /**
  * What the scratchpad remembers, per browser (localStorage): whether it's
- * open, where it sits and how big it is, and one drawing per lesson
+ * open, its width as a share of the window, and one drawing per lesson
  * (model.ts drawingKeyForPath). A convenience, not data: anything unreadable
  * falls back to defaults. Saving a drawing reports failure (a full storage)
  * so the panel can say it wasn't saved.
+ *
+ * Also the sidebar's sizing rules (pure, for tests): how wide it is for a
+ * remembered share, and when the window is too narrow to fit it beside the
+ * page.
  */
 import { parseDrawing, serializeDrawing, type PadItem } from "./model";
 
-export interface ScratchpadWindow {
+export interface ScratchpadState {
 	open: boolean;
-	/** Top-left corner in px; null = centered. */
-	position: { x: number; y: number } | null;
-	size: { width: number; height: number };
+	/** The sidebar's width as a share of the window (0 to 1). */
+	fraction: number;
 }
 
-export const DEFAULT_SIZE = { width: 560, height: 440 };
-export const MIN_SIZE = { width: 340, height: 280 };
-const WINDOW_KEY = "lh:scratchpad";
+/** Half the window. */
+export const DEFAULT_FRACTION = 0.5;
+/** The narrowest the scratchpad gets. */
+export const SIDEBAR_MIN = 320;
+/** The narrowest the page beside it gets. */
+export const PAGE_MIN = 420;
+const STATE_KEY = "lh:scratchpad";
 const DRAWING_PREFIX = "lh:scratchpad:drawing:";
 
-/** Stored window state, keeping only well-formed fields. Pure, for tests. */
-export function parseScratchpadWindow(raw: unknown): ScratchpadWindow {
-	const fallback: ScratchpadWindow = { open: false, position: null, size: { ...DEFAULT_SIZE } };
-	if (typeof raw !== "object" || raw === null) return fallback;
-	const r = raw as Record<string, unknown>;
-	const pos = r.position as { x?: unknown; y?: unknown } | null | undefined;
-	const size = r.size as { width?: unknown; height?: unknown } | null | undefined;
-	const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+/** Stored state, keeping only well-formed fields. Pure, for tests. */
+export function parseScratchpadState(raw: unknown): ScratchpadState {
+	const r = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+	const f = r.fraction;
 	return {
 		open: r.open === true,
-		position: pos && finite(pos.x) && finite(pos.y) ? { x: pos.x, y: pos.y } : null,
-		size:
-			size && finite(size.width) && finite(size.height)
-				? { width: Math.max(MIN_SIZE.width, size.width), height: Math.max(MIN_SIZE.height, size.height) }
-				: { ...DEFAULT_SIZE },
+		fraction: typeof f === "number" && Number.isFinite(f) && f > 0 && f < 1 ? f : DEFAULT_FRACTION,
 	};
 }
 
-export function loadScratchpadWindow(): ScratchpadWindow {
+export function loadScratchpadState(): ScratchpadState {
 	try {
-		const text = window.localStorage.getItem(WINDOW_KEY);
-		return parseScratchpadWindow(text ? JSON.parse(text) : null);
+		const text = window.localStorage.getItem(STATE_KEY);
+		return parseScratchpadState(text ? JSON.parse(text) : null);
 	} catch {
-		return parseScratchpadWindow(null);
+		return parseScratchpadState(null);
 	}
 }
 
-export function saveScratchpadWindow(patch: Partial<ScratchpadWindow>): void {
+export function saveScratchpadState(patch: Partial<ScratchpadState>): void {
 	try {
-		window.localStorage.setItem(WINDOW_KEY, JSON.stringify({ ...loadScratchpadWindow(), ...patch }));
+		window.localStorage.setItem(STATE_KEY, JSON.stringify({ ...loadScratchpadState(), ...patch }));
 	} catch {
 		// private window or blocked storage: the scratchpad still works
 	}
+}
+
+/** How the sidebar sits in a row `row` px wide whose page starts `left` px
+ *  in (after the sessions sidebar): beside the page ("side"), its width
+ *  kept between SIDEBAR_MIN and what leaves the page PAGE_MIN; or, when
+ *  both can't fit, over the page ("cover"), as wide as the page. Pure, for
+ *  tests. */
+export function sidebarLayout(fraction: number, row: number, left: number): { mode: "side" | "cover"; width: number } {
+	const room = row - left;
+	if (room < SIDEBAR_MIN + PAGE_MIN) return { mode: "cover", width: Math.round(Math.min(row, Math.max(SIDEBAR_MIN, room))) };
+	return { mode: "side", width: Math.round(Math.min(Math.max(fraction * row, SIDEBAR_MIN), room - PAGE_MIN)) };
+}
+
+/** The share of the row a divider dragged to `width` px gives, within the
+ *  sidebar's limits. Pure, for tests. */
+export function fractionForWidth(width: number, row: number, left: number): number {
+	if (row <= 0) return DEFAULT_FRACTION;
+	return sidebarLayout(width / row, row, left).width / row;
 }
 
 export function loadDrawing(key: string): PadItem[] {
@@ -73,35 +90,4 @@ export function saveDrawing(key: string, items: readonly PadItem[]): boolean {
 	} catch {
 		return false;
 	}
-}
-
-/** Where the scratchpad goes in the dock's freed right column (the
- *  answer box slid left for it, chat.tsx): the column's full width, its
- *  remembered height, standing on the column's bottom edge and rising above
- *  it like the side chat. Null when the column is too narrow to hold it.
- *  Pure, for tests. */
-export function sideColumnSpot(
-	column: { left: number; width: number; bottom: number },
-	size: { width: number; height: number },
-	viewport: { width: number; height: number },
-): { position: { x: number; y: number }; size: { width: number; height: number } } | null {
-	if (column.width < MIN_SIZE.width) return null;
-	const fitted = clampSize({ width: column.width, height: size.height }, viewport);
-	return {
-		position: { x: Math.round(column.left), y: Math.round(Math.max(8, column.bottom - fitted.height)) },
-		size: fitted,
-	};
-}
-
-/** The window's size kept inside the viewport (with a margin) and above
- *  the minimum. Pure, for tests. */
-export function clampSize(
-	size: { width: number; height: number },
-	viewport: { width: number; height: number },
-	margin = 8,
-): { width: number; height: number } {
-	return {
-		width: Math.round(Math.min(Math.max(size.width, MIN_SIZE.width), Math.max(MIN_SIZE.width, viewport.width - margin * 2))),
-		height: Math.round(Math.min(Math.max(size.height, MIN_SIZE.height), Math.max(MIN_SIZE.height, viewport.height - margin * 2))),
-	};
 }

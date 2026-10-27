@@ -1,20 +1,21 @@
 "use client";
 /**
- * THE FLOATING SCRATCHPAD: a drawing window for working things out by hand.
- * Dragged by its title bar, resized from its bottom-right corner (a bigger
- * window shows more of the page; nothing is rescaled), and styled from the
- * theme tokens, except the drawing area, which is always #202020.
+ * THE SCRATCHPAD: a drawing pad for working things out by hand, filling the
+ * right-hand sidebar (scratchpad-host.tsx sizes it; a wider sidebar shows
+ * more of the page, nothing is rescaled). Styled from the theme tokens,
+ * except the drawing area, which is always #202020.
  *
- * Tools: pen (pressure-sensitive with a pen tablet), eraser, and outline
+ * Tools: pen (pressure-sensitive with a pen tablet; Shift held as a stroke
+ * starts makes it one straight line in 45° steps), eraser, and outline
  * shapes drawn by dragging (Shift keeps them regular). Undo/redo (buttons,
  * Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y) and Clear (asks first; undoable). Each
- * lesson keeps its own drawing in this browser (state.ts); Esc closes.
+ * lesson keeps its own drawing in this browser (state.ts).
  *
  * Two stacked canvases: the drawing (pen and eraser draw on it live, and
  * it's redrawn from the model on undo, resize and load) and a preview layer
  * for the shape being dragged.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	CircleIcon,
 	EraserIcon,
@@ -30,7 +31,6 @@ import {
 	XIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { clampPosition } from "../calculator/state";
 import {
 	addItem,
 	constrainShape,
@@ -41,23 +41,21 @@ import {
 	PAD_COLORS,
 	PAD_SIZES,
 	redo,
+	straightPenEnd,
 	undo,
 	type PadHistory,
 	type PadItem,
 	type PadSizeName,
 	type PadTool,
 	type PenPoint,
+	type Point,
 	type ShapeKind,
 } from "./model";
 import { drawPenSegment, drawSegment, drawShape, redraw } from "./render";
-import { clampSize, loadDrawing, loadScratchpadWindow, saveDrawing, saveScratchpadWindow, sideColumnSpot } from "./state";
-
-/** How long the dock's answer box takes to slide left (chat.tsx SPLIT_MS),
- *  plus a beat: the freed column is measured once it has settled. */
-const DOCK_SLIDE_SETTLE_MS = 360;
+import { loadDrawing, saveDrawing } from "./state";
 
 const TOOLS: readonly { tool: PadTool; label: string; icon: React.ReactNode }[] = [
-	{ tool: "pen", label: "Pen", icon: <PencilIcon className="size-4" /> },
+	{ tool: "pen", label: "Pen (Shift: straight line, 45° steps)", icon: <PencilIcon className="size-4" /> },
 	{ tool: "eraser", label: "Eraser", icon: <EraserIcon className="size-4" /> },
 	{ tool: "ellipse", label: "Circle / ellipse (Shift: circle)", icon: <CircleIcon className="size-4" /> },
 	{ tool: "rect", label: "Rectangle (Shift: square)", icon: <SquareIcon className="size-4" /> },
@@ -74,10 +72,21 @@ const SIZE_NAMES: readonly PadSizeName[] = ["thin", "medium", "thick"];
 type Gesture =
 	| { pointer: number; kind: "stroke"; item: Extract<PadItem, { kind: "stroke" }> }
 	| { pointer: number; kind: "erase"; item: Extract<PadItem, { kind: "erase" }> }
+	// The pen with Shift held as it started: a straight line, previewed live.
+	| { pointer: number; kind: "straight"; color: string; size: number; from: Point; to: Point }
 	| { pointer: number; kind: "shape"; shape: ShapeKind; color: string; size: number; from: PenPoint; to: PenPoint };
 
-export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; onClose: () => void }) {
-	const initialWindow = useMemo(() => loadScratchpadWindow(), []);
+export function ScratchpadPanel({
+	drawingKey,
+	onClose,
+	takeFocus,
+}: {
+	drawingKey: string;
+	onClose: () => void;
+	/** True once, right after the user opens the scratchpad: focus it then
+	 *  (so Ctrl+Z reaches it), never on a page load or a lesson switch. */
+	takeFocus?: () => boolean;
+}) {
 	const [history, setHistory] = useState<PadHistory>(() => ({ items: loadDrawing(drawingKey), undone: [] }));
 	const historyRef = useRef(history);
 	historyRef.current = history;
@@ -87,19 +96,6 @@ export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; o
 	const [confirmClear, setConfirmClear] = useState(false);
 	const [saveFailed, setSaveFailed] = useState(false);
 
-	const [position, setPositionState] = useState(initialWindow.position);
-	const positionRef = useRef(initialWindow.position);
-	const setPosition = (next: { x: number; y: number }) => {
-		positionRef.current = next;
-		setPositionState(next);
-	};
-	const [size, setSizeState] = useState(initialWindow.size);
-	const sizeRef = useRef(initialWindow.size);
-	const setSize = (next: { width: number; height: number }) => {
-		sizeRef.current = next;
-		setSizeState(next);
-	};
-
 	const panelRef = useRef<HTMLDivElement>(null);
 	const areaRef = useRef<HTMLDivElement>(null);
 	const baseRef = useRef<HTMLCanvasElement>(null);
@@ -107,9 +103,9 @@ export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; o
 	const scaleRef = useRef(1);
 	const gesture = useRef<Gesture | null>(null);
 
-	// Opening focuses the window, so Ctrl+Z and Esc reach it.
 	useEffect(() => {
-		panelRef.current?.focus({ preventScroll: true });
+		if (takeFocus?.()) panelRef.current?.focus({ preventScroll: true });
+		// on mount only: a lesson switch remounts the panel without focusing it
 	}, []);
 
 	// ── the drawing: redraw from the model, save on every change ──
@@ -147,106 +143,6 @@ export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; o
 		return () => observer.disconnect();
 	}, [redrawBase]);
 
-	// ── the window: on screen, title bar included ──
-	useEffect(() => {
-		const fit = () => {
-			const viewport = { width: window.innerWidth, height: window.innerHeight };
-			const nextSize = clampSize(sizeRef.current, viewport);
-			if (nextSize.width !== sizeRef.current.width || nextSize.height !== sizeRef.current.height) setSize(nextSize);
-			const current = positionRef.current ?? { x: (viewport.width - nextSize.width) / 2, y: Math.max(8, (viewport.height - nextSize.height) / 3) };
-			const next = clampPosition(current, nextSize, viewport);
-			if (!positionRef.current || next.x !== current.x || next.y !== current.y) setPosition(next);
-		};
-		fit();
-		window.addEventListener("resize", fit);
-		return () => window.removeEventListener("resize", fit);
-	}, []);
-
-	// Room beside the answer box: on a chat page with a wide enough band,
-	// the answer box slides left for the scratchpad (chat.tsx) and the
-	// scratchpad drops into the freed right column. It docks each time the
-	// column BECOMES free (on opening, when a side chat closes and gives it
-	// up, when the window grows wide enough), once the slide has settled;
-	// while it stays free, dragging places the scratchpad as usual. Never
-	// saved, so other pages keep the remembered spot.
-	useEffect(() => {
-		const column = document.querySelector<HTMLElement>("[data-dock-side-column]");
-		if (!column) return;
-		let wasFree = false;
-		let timer: ReturnType<typeof setTimeout> | undefined;
-		const place = () => {
-			const rect = column.getBoundingClientRect();
-			const free = !column.querySelector("[data-clarifier-panel]") && rect.width > 0;
-			if (free && !wasFree) {
-				const spot = sideColumnSpot(rect, sizeRef.current, { width: window.innerWidth, height: window.innerHeight });
-				if (spot) {
-					setSize(spot.size);
-					setPosition(spot.position);
-				}
-			}
-			wasFree = free;
-		};
-		const settle = () => {
-			clearTimeout(timer);
-			timer = setTimeout(place, DOCK_SLIDE_SETTLE_MS);
-		};
-		settle();
-		// The column's width animates as it opens and closes; a side chat's
-		// panel comes and goes inside it.
-		const resize = new ResizeObserver(settle);
-		resize.observe(column);
-		const children = new MutationObserver(settle);
-		children.observe(column, { childList: true, subtree: true });
-		return () => {
-			clearTimeout(timer);
-			resize.disconnect();
-			children.disconnect();
-		};
-	}, []);
-
-	const drag = useRef<{ dx: number; dy: number; pointer: number } | null>(null);
-	const onDragStart = (e: React.PointerEvent<HTMLDivElement>) => {
-		if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
-		const rect = panelRef.current!.getBoundingClientRect();
-		drag.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top, pointer: e.pointerId };
-		e.currentTarget.setPointerCapture(e.pointerId);
-		e.preventDefault();
-	};
-	const onDragMove = (e: React.PointerEvent<HTMLDivElement>) => {
-		const d = drag.current;
-		if (!d || d.pointer !== e.pointerId) return;
-		setPosition(clampPosition({ x: e.clientX - d.dx, y: e.clientY - d.dy }, sizeRef.current, { width: window.innerWidth, height: window.innerHeight }));
-	};
-	const onDragEnd = (e: React.PointerEvent<HTMLDivElement>) => {
-		if (!drag.current || drag.current.pointer !== e.pointerId) return;
-		drag.current = null;
-		e.currentTarget.releasePointerCapture(e.pointerId);
-		if (positionRef.current) saveScratchpadWindow({ position: positionRef.current });
-	};
-
-	const resizing = useRef<{ pointer: number; startX: number; startY: number; width: number; height: number } | null>(null);
-	const onResizeStart = (e: React.PointerEvent<HTMLDivElement>) => {
-		if (e.button !== 0) return;
-		resizing.current = { pointer: e.pointerId, startX: e.clientX, startY: e.clientY, ...sizeRef.current };
-		e.currentTarget.setPointerCapture(e.pointerId);
-		e.preventDefault();
-		e.stopPropagation();
-	};
-	const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
-		const r = resizing.current;
-		if (!r || r.pointer !== e.pointerId) return;
-		const pos = positionRef.current ?? { x: 8, y: 8 };
-		// Up to the viewport's right and bottom edges from where the window sits.
-		const room = { width: window.innerWidth - pos.x + 8, height: window.innerHeight - pos.y + 8 };
-		setSize(clampSize({ width: r.width + e.clientX - r.startX, height: r.height + e.clientY - r.startY }, room));
-	};
-	const onResizeEnd = (e: React.PointerEvent<HTMLDivElement>) => {
-		if (!resizing.current || resizing.current.pointer !== e.pointerId) return;
-		resizing.current = null;
-		e.currentTarget.releasePointerCapture(e.pointerId);
-		saveScratchpadWindow({ size: sizeRef.current });
-	};
-
 	// ── drawing gestures ──
 	const pointIn = (e: { clientX: number; clientY: number; pressure: number; pointerType: string }): PenPoint => {
 		const rect = liveRef.current!.getBoundingClientRect();
@@ -277,7 +173,11 @@ export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; o
 		e.preventDefault();
 		const point = pointIn(e);
 		const width = PAD_SIZES[sizeName];
-		if (tool === "pen") {
+		if (tool === "pen" && e.shiftKey) {
+			const start = { x: point.x, y: point.y };
+			gesture.current = { pointer: e.pointerId, kind: "straight", color, size: width, from: start, to: start };
+			withScale(liveRef.current, (ctx) => drawPenSegment(ctx, color, width, start, start));
+		} else if (tool === "pen") {
 			gesture.current = { pointer: e.pointerId, kind: "stroke", item: { kind: "stroke", color, size: width, points: [point] } };
 			withScale(baseRef.current, (ctx) => drawPenSegment(ctx, color, width, point, point));
 		} else if (tool === "eraser") {
@@ -295,6 +195,13 @@ export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; o
 		// Every sample since the last frame: smooth lines from fast pens.
 		const samples = typeof e.nativeEvent.getCoalescedEvents === "function" ? e.nativeEvent.getCoalescedEvents() : [];
 		const events = samples.length > 0 ? samples : [e.nativeEvent];
+		if (g.kind === "straight") {
+			// Straight and snapped for the whole stroke, Shift held or not.
+			g.to = straightPenEnd(g.from, pointIn(events[events.length - 1]!));
+			clearLive();
+			withScale(liveRef.current, (ctx) => drawPenSegment(ctx, g.color, g.size, g.from, g.to));
+			return;
+		}
 		if (g.kind === "shape") {
 			const last = events[events.length - 1]!;
 			g.to = pointIn(last);
@@ -326,6 +233,13 @@ export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; o
 		if (!g || g.pointer !== e.pointerId) return;
 		gesture.current = null;
 		if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+		if (g.kind === "straight") {
+			clearLive();
+			// A click without a drag leaves a dot, as the pen does.
+			const points = g.to.x === g.from.x && g.to.y === g.from.y ? [g.from] : [g.from, g.to];
+			setHistory((h) => addItem(h, { kind: "stroke", color: g.color, size: g.size, points }));
+			return;
+		}
 		if (g.kind === "shape") {
 			clearLive();
 			const { from, to } = constrainShape(g.shape, g.from, g.to, e.shiftKey);
@@ -350,8 +264,6 @@ export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; o
 	return (
 		<div
 			ref={panelRef}
-			role="dialog"
-			aria-label="Scratchpad"
 			tabIndex={-1}
 			data-testid="scratchpad"
 			data-scratchpad=""
@@ -364,11 +276,13 @@ export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; o
 					e.stopPropagation();
 					return;
 				}
+				// Esc backs out of the clear confirm, and never reaches the
+				// page (where it would stop the tutor's turn). The sidebar
+				// stays open until it's toggled.
 				if (e.key === "Escape") {
 					e.preventDefault();
 					e.stopPropagation();
-					if (confirmClear) setConfirmClear(false);
-					else onClose();
+					setConfirmClear(false);
 					return;
 				}
 				if (mod && !e.altKey && (key === "z" || key === "y")) {
@@ -378,21 +292,12 @@ export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; o
 					else doUndo();
 				}
 			}}
-			className="fixed z-40 flex flex-col overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-lg outline-none"
-			style={{
-				width: size.width,
-				height: size.height,
-				...(position ? { left: position.x, top: position.y } : { left: "50%", top: 72, transform: "translateX(-50%)" }),
-			}}
+			className="flex h-full min-w-0 flex-1 flex-col bg-background text-foreground outline-none"
 		>
-			<div
-				onPointerDown={onDragStart}
-				onPointerMove={onDragMove}
-				onPointerUp={onDragEnd}
-				onPointerCancel={onDragEnd}
-				data-testid="scratchpad-titlebar"
-				className="flex cursor-move touch-none select-none items-center gap-1 px-3 pt-2 pb-1"
-			>
+			{/* The top bar's mechanics (top-bar.tsx): 60px, one border line, a
+			    window-drag band in the desktop app that clears its window
+			    buttons (now over this corner). */}
+			<header className="lh-drag lh-wco-gutter flex h-15 shrink-0 select-none items-center gap-1 border-b border-border px-3">
 				<span className="font-ui text-xs font-medium uppercase tracking-wide text-muted-foreground">Scratchpad</span>
 				{saveFailed && (
 					<span role="status" className="ml-2 text-xs text-red-500" data-testid="scratchpad-unsaved">
@@ -423,13 +328,13 @@ export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; o
 							</button>
 						</>
 					)}
-					<button type="button" aria-label="Close the scratchpad" title="Close (Esc)" onClick={onClose} className={iconButton}>
+					<button type="button" aria-label="Close the scratchpad" title="Close" data-testid="scratchpad-close" onClick={onClose} className={iconButton}>
 						<XIcon className="size-4" />
 					</button>
 				</div>
-			</div>
+			</header>
 
-			<div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-2.5 pb-2" data-testid="scratchpad-toolbar">
+			<div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-border px-2.5 py-2" data-testid="scratchpad-toolbar">
 				<div role="radiogroup" aria-label="Tool" className="flex items-center gap-0.5">
 					{TOOLS.map(({ tool: t, label, icon }) => (
 						<button
@@ -475,7 +380,7 @@ export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; o
 							title={c}
 							data-testid={`scratchpad-color-${c.slice(1)}`}
 							onClick={() => setColor(c)}
-							className={cn("size-5 rounded-[4px] transition-transform hover:scale-110", color === c && "ring-2 ring-[#378ef0] ring-offset-1 ring-offset-card")}
+							className={cn("size-5 rounded-[4px] transition-transform hover:scale-110", color === c && "ring-2 ring-[#378ef0] ring-offset-1 ring-offset-background")}
 							style={{ backgroundColor: c }}
 						/>
 					))}
@@ -492,23 +397,11 @@ export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; o
 					onPointerMove={onCanvasMove}
 					onPointerUp={onCanvasUp}
 					onPointerCancel={onCanvasUp}
+					// A stroke the browser drops without a pointerup ends too,
+					// instead of drawing on the next hover.
+					onLostPointerCapture={onCanvasUp}
 					className="absolute inset-0 size-full cursor-crosshair touch-none"
 				/>
-				<div
-					role="separator"
-					aria-label="Resize the scratchpad"
-					title="Drag to resize"
-					data-testid="scratchpad-resize"
-					onPointerDown={onResizeStart}
-					onPointerMove={onResizeMove}
-					onPointerUp={onResizeEnd}
-					onPointerCancel={onResizeEnd}
-					className="absolute right-0 bottom-0 size-4 cursor-nwse-resize touch-none"
-				>
-					<svg viewBox="0 0 16 16" className="size-4 text-white/35" aria-hidden="true">
-						<path d="M14 6 6 14M14 10l-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-					</svg>
-				</div>
 			</div>
 		</div>
 	);

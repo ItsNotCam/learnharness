@@ -75,7 +75,7 @@ export const KEYBOARD_ACTIONS: readonly KeyActionDef[] = [
 	// browser (mod+ letters collide with browser shortcuts) and inside text
 	// fields, which pass mod/alt combos through.
 	{ id: "toggle-calculator", label: "Toggle calculator", scope: "global", binding: "alt+c" },
-	// The floating scratchpad (components/scratchpad), same reasoning. Not
+	// The scratchpad sidebar (components/scratchpad), same reasoning. Not
 	// Alt+D: browsers take that for the address bar.
 	{ id: "toggle-scratchpad", label: "Toggle scratchpad", scope: "global", binding: "alt+p" },
 	// Mod+F is surface-scoped: graph node search and session text Find share

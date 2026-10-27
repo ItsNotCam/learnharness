@@ -1,7 +1,8 @@
 /**
  * The scratchpad's pure parts: shape constraints and geometry, pen width,
  * the undo history (clear included), storage round-trips, the per-lesson
- * key, the window state, and what the renderer asks the canvas to do.
+ * key, the sidebar's state and sizing, and what the renderer asks the canvas
+ * to do.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
@@ -18,12 +19,12 @@ import {
 	redo,
 	serializeDrawing,
 	shapeGeometry,
+	straightPenEnd,
 	undo,
 	visibleItems,
 	type PadItem,
 } from "../components/scratchpad/model.ts";
-import { clampSize, MIN_SIZE, parseScratchpadWindow, sideColumnSpot } from "../components/scratchpad/state.ts";
-import { dockSplits } from "../components/chat.tsx";
+import { fractionForWidth, PAGE_MIN, parseScratchpadState, SIDEBAR_MIN, sidebarLayout } from "../components/scratchpad/state.ts";
 import { drawItem } from "../components/scratchpad/render.ts";
 import { KEYBOARD_ACTIONS } from "../src/core/keyboard.ts";
 
@@ -84,6 +85,17 @@ describe("shapes", () => {
 });
 
 describe("the pen", () => {
+	it("with Shift, draws straight in 45° steps, ending where the cursor is along the line", () => {
+		const from = { x: 100, y: 100 };
+		assert.deepEqual(straightPenEnd(from, { x: 200, y: 108 }), { x: 200, y: 100 }, "near-flat: flat, to the cursor's x");
+		assert.deepEqual(straightPenEnd(from, { x: 94, y: 20 }), { x: 100, y: 20 }, "near-vertical: straight up");
+		const diag = straightPenEnd(from, { x: 150, y: 160 });
+		assert.ok(close(diag.x - 100, diag.y - 100), "a diagonal: 45° exactly");
+		assert.ok(close(diag.x - 100, 55), "as far as the cursor is along it");
+		assert.deepEqual(straightPenEnd(from, { x: 40, y: 103 }), { x: 40, y: 100 }, "leftward too");
+		assert.deepEqual(straightPenEnd(from, from), from);
+	});
+
 	it("draws the plain width without pressure, and scales with a pen's pressure", () => {
 		assert.equal(penWidth(4, undefined), 4);
 		assert.ok(penWidth(4, 0.1) < penWidth(4, 0.9));
@@ -157,34 +169,39 @@ describe("storage", () => {
 	});
 });
 
-describe("the window", () => {
-	it("reads stored state defensively and keeps the size above the minimum", () => {
-		assert.deepEqual(parseScratchpadWindow(null), { open: false, position: null, size: { width: 560, height: 440 } });
-		assert.deepEqual(parseScratchpadWindow({ open: true, position: { x: 5, y: 6 }, size: { width: 10, height: 900 } }), {
-			open: true,
-			position: { x: 5, y: 6 },
-			size: { width: MIN_SIZE.width, height: 900 },
-		});
+describe("the sidebar", () => {
+	it("reads stored state defensively: closed at half the window by default", () => {
+		assert.deepEqual(parseScratchpadState(null), { open: false, fraction: 0.5 });
+		assert.deepEqual(parseScratchpadState({ open: true, fraction: 0.3 }), { open: true, fraction: 0.3 });
+		for (const fraction of [0, 1, 1.5, -0.2, Number.NaN, "0.3"]) assert.equal(parseScratchpadState({ fraction }).fraction, 0.5, String(fraction));
+		// The floating window's old state: still opens, at half.
+		assert.deepEqual(parseScratchpadState({ open: true, position: { x: 5, y: 6 }, size: { width: 560, height: 440 } }), { open: true, fraction: 0.5 });
 	});
 
-	it("never grows past the viewport", () => {
-		assert.deepEqual(clampSize({ width: 2000, height: 2000 }, { width: 1000, height: 700 }), { width: 984, height: 684 });
-		assert.deepEqual(clampSize({ width: 10, height: 10 }, { width: 1000, height: 700 }), MIN_SIZE);
+	it("takes its share of the window, beside the page", () => {
+		assert.deepEqual(sidebarLayout(0.5, 1600, 0), { mode: "side", width: 800 });
+		assert.deepEqual(sidebarLayout(0.5, 1600, 288), { mode: "side", width: 800 }, "the share is of the whole window");
+		assert.deepEqual(sidebarLayout(0.3, 1000, 0), { mode: "side", width: 320 }, "never narrower than its minimum");
 	});
 
-	it("drops into the dock's freed right column: its full width, standing on its bottom edge", () => {
-		const spot = sideColumnSpot({ left: 900, width: 700, bottom: 820 }, { width: 560, height: 440 }, { width: 1920, height: 1000 });
-		assert.deepEqual(spot, { position: { x: 900, y: 380 }, size: { width: 700, height: 440 } });
-		assert.equal(sideColumnSpot({ left: 900, width: 200, bottom: 820 }, { width: 560, height: 440 }, { width: 1920, height: 1000 }), null, "too narrow");
-		assert.equal(sideColumnSpot({ left: 900, width: 700, bottom: 300 }, { width: 560, height: 440 }, { width: 1920, height: 1000 })!.position.y, 8, "never above the top");
+	it("always leaves the page its minimum", () => {
+		assert.deepEqual(sidebarLayout(0.9, 1600, 0), { mode: "side", width: 1600 - PAGE_MIN });
+		assert.deepEqual(sidebarLayout(0.5, 1200, 288), { mode: "side", width: 1200 - 288 - PAGE_MIN }, "with the sessions sidebar open");
+		assert.deepEqual(sidebarLayout(0.5, SIDEBAR_MIN + PAGE_MIN, 0), { mode: "side", width: SIDEBAR_MIN }, "just fits");
 	});
 
-	it("makes the answer box slide aside when open on a wide band", () => {
-		assert.equal(dockSplits(null, true, 1600), true, "no side chat shown (or one behind a reveal): the column is free");
-		assert.equal(dockSplits(null, true, 900), false, "too narrow: it floats as before");
-		assert.equal(dockSplits("inline", true, 900), false, "a narrow side chat stays inline");
-		assert.equal(dockSplits("split", false, 1600), true, "the side chat's own split is unchanged");
-		assert.equal(dockSplits(null, false, 1600), false);
+	it("covers the page when both can't fit", () => {
+		assert.deepEqual(sidebarLayout(0.5, 700, 0), { mode: "cover", width: 700 });
+		assert.deepEqual(sidebarLayout(0.5, 900, 288), { mode: "cover", width: 612 }, "as wide as the page");
+		assert.deepEqual(sidebarLayout(0.5, 500, 288), { mode: "cover", width: SIDEBAR_MIN }, "but never under its minimum");
+		assert.deepEqual(sidebarLayout(0.5, 300, 0), { mode: "cover", width: 300 }, "nor wider than the window");
+	});
+
+	it("turns a dragged divider into a share, within the limits", () => {
+		assert.equal(fractionForWidth(600, 1600, 0), 600 / 1600);
+		assert.equal(fractionForWidth(100, 1600, 0), SIDEBAR_MIN / 1600);
+		assert.equal(fractionForWidth(1500, 1600, 288), (1600 - 288 - PAGE_MIN) / 1600);
+		assert.equal(fractionForWidth(500, 0, 0), 0.5, "an unmeasured row: the default");
 	});
 
 	it("opens with Alt+P", () => {
