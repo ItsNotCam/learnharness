@@ -8,6 +8,7 @@ import { ServerEventsProvider } from "@/components/server-events";
 import { AppearanceProvider } from "@/components/settings/appearance";
 import UpdateBanner from "@/components/update-banner";
 import { CalculatorHost } from "@/components/calculator/calculator-host";
+import { ScratchpadHost } from "@/components/scratchpad/scratchpad-host";
 import { appearanceModeClass, customThemeCss, type CustomTheme } from "@/src/core";
 import { effectiveSettings, getTheme } from "@/src/server";
 
@@ -65,6 +66,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 			<UpdateBanner />
 			{/* The floating calculator (Alt+C or the bar's calculator button). */}
 			<CalculatorHost />
+			{/* The floating scratchpad (Alt+P or the bar's pencil button). */}
+			<ScratchpadHost />
 		</body>
 		</html>
 	);
