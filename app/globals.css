@@ -47,6 +47,8 @@
 	--accent: #2a2a2a;
 	--accent-foreground: #e6e6e6;
 	--destructive: oklch(0.704 0.191 22.216);
+	/* Inline `code` (md-blocks): a soft red on the dark gray. */
+	--inline-code: #f47067;
 	--border: #434343;
 	--input: #434343;
 	--ring: #8d8d8d;
@@ -103,6 +105,8 @@
 	--accent: #2a2a2a;
 	--accent-foreground: #e6e6e6;
 	--destructive: oklch(0.704 0.191 22.216);
+	/* Inline `code` (md-blocks): a soft red on the dark gray. */
+	--inline-code: #f47067;
 	--border: #434343;
 	--input: #434343;
 	--ring: #8d8d8d;
@@ -157,6 +161,8 @@
 	--accent: #e7dfcf;
 	--accent-foreground: #2b2520;
 	--destructive: #b3372a;
+	/* Inline `code`: a deeper red that reads on ivory. */
+	--inline-code: #b3372a;
 	--border: #dacfbb;
 	--input: #d2c6af;
 	--ring: #a35a46;
@@ -205,6 +211,8 @@
 	--accent: #3a3f4b;
 	--accent-foreground: #d7dae0;
 	--destructive: #e06c75;
+	/* Inline `code`: One Dark's red. */
+	--inline-code: #e06c75;
 	--border: #3e4452;
 	--input: #3e4452;
 	--ring: #528bff;

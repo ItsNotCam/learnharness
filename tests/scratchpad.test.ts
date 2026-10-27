@@ -22,7 +22,8 @@ import {
 	visibleItems,
 	type PadItem,
 } from "../components/scratchpad/model.ts";
-import { clampSize, MIN_SIZE, parseScratchpadWindow } from "../components/scratchpad/state.ts";
+import { clampSize, MIN_SIZE, parseScratchpadWindow, sideColumnSpot } from "../components/scratchpad/state.ts";
+import { dockSplits } from "../components/chat.tsx";
 import { drawItem } from "../components/scratchpad/render.ts";
 import { KEYBOARD_ACTIONS } from "../src/core/keyboard.ts";
 
@@ -169,6 +170,21 @@ describe("the window", () => {
 	it("never grows past the viewport", () => {
 		assert.deepEqual(clampSize({ width: 2000, height: 2000 }, { width: 1000, height: 700 }), { width: 984, height: 684 });
 		assert.deepEqual(clampSize({ width: 10, height: 10 }, { width: 1000, height: 700 }), MIN_SIZE);
+	});
+
+	it("drops into the dock's freed right column: its full width, standing on its bottom edge", () => {
+		const spot = sideColumnSpot({ left: 900, width: 700, bottom: 820 }, { width: 560, height: 440 }, { width: 1920, height: 1000 });
+		assert.deepEqual(spot, { position: { x: 900, y: 380 }, size: { width: 700, height: 440 } });
+		assert.equal(sideColumnSpot({ left: 900, width: 200, bottom: 820 }, { width: 560, height: 440 }, { width: 1920, height: 1000 }), null, "too narrow");
+		assert.equal(sideColumnSpot({ left: 900, width: 700, bottom: 300 }, { width: 560, height: 440 }, { width: 1920, height: 1000 })!.position.y, 8, "never above the top");
+	});
+
+	it("makes the answer box slide aside when open on a wide band", () => {
+		assert.equal(dockSplits(null, true, 1600), true, "no side chat shown (or one behind a reveal): the column is free");
+		assert.equal(dockSplits(null, true, 900), false, "too narrow: it floats as before");
+		assert.equal(dockSplits("inline", true, 900), false, "a narrow side chat stays inline");
+		assert.equal(dockSplits("split", false, 1600), true, "the side chat's own split is unchanged");
+		assert.equal(dockSplits(null, false, 1600), false);
 	});
 
 	it("opens with Alt+P", () => {

@@ -58,6 +58,7 @@ import type { PlanBlockData } from "@/src/core";
 import { QuestionDock } from "@/components/question-dock";
 import { ClarifierPanel, useClarifier, type ClarifierState } from "@/components/question-clarifier";
 import { AskAboutReply } from "@/components/ask-about-reply";
+import { useScratchpadOpen } from "@/components/scratchpad/open-store";
 import { cn } from "@/lib/utils";
 import { SessionFind } from "@/components/session-find";
 import { HighlightLayer, HighlightsChip, useLessonHighlights } from "@/components/lesson-highlights";
@@ -1924,6 +1925,16 @@ export function probeArrivalExpanded(isAtBottom: boolean): boolean {
  *  beside the question, sharing the band's width (wide bands only, and only
  *  once a teach check is revealed, like the check itself); "inline" =
  *  inside the question card (narrow bands); null = closed. */
+/** Does the dock split (answer box left, a right column)? For a side chat
+ *  placed "split", or for the open scratchpad on a wide enough band: the
+ *  floating scratchpad drops into the freed column (scratchpad-panel.tsx),
+ *  or floats over a side chat that holds it. A side chat that isn't shown
+ *  in the split (a check still behind its reveal) leaves the room free.
+ *  Pure, for tests. */
+export function dockSplits(placement: "split" | "inline" | null, scratchpadOpen: boolean, bandWidth: number): boolean {
+	return placement === "split" || (scratchpadOpen && bandWidth >= CLARIFY_SPLIT_MIN_W);
+}
+
 export function clarifierPlacement(open: boolean, revealPending: boolean, bandWidth: number): "split" | "inline" | null {
 	if (!open) return null;
 	if (bandWidth < CLARIFY_SPLIT_MIN_W) return "inline";
@@ -2364,26 +2375,34 @@ function DockOverlay({
 
 	// The side chat's placement. The band width comes from the flank measure
 	// above (flankW = width / 2 - DOCK_W / 2 - 2 * MARGIN_GAP).
-	const placement = activeChat
-		? clarifierPlacement(true, activeChat === questionChat && revealPending, flankW * 2 + DOCK_W + 4 * MARGIN_GAP)
-		: null;
-	const split = placement === "split";
+	const scratchpadOpen = useScratchpadOpen();
+	const bandWidth = flankW * 2 + DOCK_W + 4 * MARGIN_GAP;
+	const placement = activeChat ? clarifierPlacement(true, activeChat === questionChat && revealPending, bandWidth) : null;
+	const split = dockSplits(placement, scratchpadOpen, bandWidth);
 	// A narrow band's reply chat height (above the shell), or null.
 	const replyAboveH = placement === "inline" && replyChat && dockMaxH ? Math.round(dockMaxH * 0.45) : null;
-	// The split panel renders while split, and lingers through the slide
-	// back after closing. Once a slide settles, the band is re-measured:
-	// the question reflows to its new width inside the CSS transition,
-	// after this render's measure, and may have grown taller.
-	const [splitLingers, setSplitLingers] = useState(split);
+	// Once a slide settles, the band is re-measured: the question reflows to
+	// its new width inside the CSS transition, after this render's measure,
+	// and may have grown taller.
 	useEffect(() => {
-		if (split) setSplitLingers(true);
-		const settle = setTimeout(() => {
-			if (!split) setSplitLingers(false);
-			measureBlock();
-		}, SPLIT_MS + 20);
+		const settle = setTimeout(measureBlock, SPLIT_MS + 20);
 		return () => clearTimeout(settle);
 		// fire on the split flipping only
 	}, [split]);
+	// The side chat's panel shows while a side chat holds the split, and
+	// lingers through its own slide-out. A split made for the scratchpad
+	// leaves the column empty for the floating scratchpad (it never brings
+	// back the last side chat).
+	const chatSplit = placement === "split";
+	const [chatPanelLingers, setChatPanelLingers] = useState(chatSplit);
+	useEffect(() => {
+		if (chatSplit) {
+			setChatPanelLingers(true);
+			return;
+		}
+		const done = setTimeout(() => setChatPanelLingers(false), SPLIT_MS + 20);
+		return () => clearTimeout(done);
+	}, [chatSplit]);
 
 	const mode = pending
 		? `question:${pending.toolCallId}`
@@ -2588,12 +2607,14 @@ function DockOverlay({
 					<div
 						aria-hidden={!split}
 						data-testid="clarifier-column"
+						// The scratchpad finds the freed column here (scratchpad-panel.tsx).
+						data-dock-side-column=""
 						className={cn(
 							"relative min-w-0 basis-0 transition-[flex-grow,margin,opacity] duration-300 ease-out",
 							split ? "ml-4 grow opacity-100" : "ml-0 grow-0 opacity-0",
 						)}
 					>
-						{(split || splitLingers) && lingerChatRef.current && (
+						{(chatSplit || chatPanelLingers) && lingerChatRef.current && (
 							<ClarifierPanel
 								state={activeChat ?? lingerChatRef.current}
 								variant="side"

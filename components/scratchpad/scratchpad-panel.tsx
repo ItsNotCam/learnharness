@@ -50,7 +50,11 @@ import {
 	type ShapeKind,
 } from "./model";
 import { drawPenSegment, drawSegment, drawShape, redraw } from "./render";
-import { clampSize, loadDrawing, loadScratchpadWindow, saveDrawing, saveScratchpadWindow } from "./state";
+import { clampSize, loadDrawing, loadScratchpadWindow, saveDrawing, saveScratchpadWindow, sideColumnSpot } from "./state";
+
+/** How long the dock's answer box takes to slide left (chat.tsx SPLIT_MS),
+ *  plus a beat: the freed column is measured once it has settled. */
+const DOCK_SLIDE_SETTLE_MS = 360;
 
 const TOOLS: readonly { tool: PadTool; label: string; icon: React.ReactNode }[] = [
 	{ tool: "pen", label: "Pen", icon: <PencilIcon className="size-4" /> },
@@ -156,6 +160,48 @@ export function ScratchpadPanel({ drawingKey, onClose }: { drawingKey: string; o
 		fit();
 		window.addEventListener("resize", fit);
 		return () => window.removeEventListener("resize", fit);
+	}, []);
+
+	// Room beside the answer box: on a chat page with a wide enough band,
+	// the answer box slides left for the scratchpad (chat.tsx) and the
+	// scratchpad drops into the freed right column. It docks each time the
+	// column BECOMES free (on opening, when a side chat closes and gives it
+	// up, when the window grows wide enough), once the slide has settled;
+	// while it stays free, dragging places the scratchpad as usual. Never
+	// saved, so other pages keep the remembered spot.
+	useEffect(() => {
+		const column = document.querySelector<HTMLElement>("[data-dock-side-column]");
+		if (!column) return;
+		let wasFree = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const place = () => {
+			const rect = column.getBoundingClientRect();
+			const free = !column.querySelector("[data-clarifier-panel]") && rect.width > 0;
+			if (free && !wasFree) {
+				const spot = sideColumnSpot(rect, sizeRef.current, { width: window.innerWidth, height: window.innerHeight });
+				if (spot) {
+					setSize(spot.size);
+					setPosition(spot.position);
+				}
+			}
+			wasFree = free;
+		};
+		const settle = () => {
+			clearTimeout(timer);
+			timer = setTimeout(place, DOCK_SLIDE_SETTLE_MS);
+		};
+		settle();
+		// The column's width animates as it opens and closes; a side chat's
+		// panel comes and goes inside it.
+		const resize = new ResizeObserver(settle);
+		resize.observe(column);
+		const children = new MutationObserver(settle);
+		children.observe(column, { childList: true, subtree: true });
+		return () => {
+			clearTimeout(timer);
+			resize.disconnect();
+			children.disconnect();
+		};
 	}, []);
 
 	const drag = useRef<{ dx: number; dy: number; pointer: number } | null>(null);
