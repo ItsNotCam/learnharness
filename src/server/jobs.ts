@@ -199,13 +199,38 @@ function failSteer(steer: SteerMessage, err: Error): void {
  *  unrecoverably. Never rejects for queueing itself. */
 export function deliverJobResult(steer: SteerMessage): Promise<void> {
 	return new Promise<void>((resolve, reject) => {
-		const s = state();
 		const chatId = chatIdOf(steer);
-		const queue = s.queues.get(chatId) ?? [];
-		queue.push({ steer, resolve, reject });
-		s.queues.set(chatId, queue);
+		enqueue(chatId, [{ steer, resolve, reject }]);
 		void pump(chatId);
 	});
+}
+
+/** Add steers to a chat's delivery queue, ONE entry per steer id: a steer
+ *  already queued (a crash-recovery re-delivery, a wake pushed back after a
+ *  conflict) gains the new caller's resolve/reject instead of a second copy.
+ *  The transcript's dedupe (steerDelivered) can't catch copies that fire
+ *  in the same wake: a result held behind an open question across a
+ *  restart was once re-queued on every jobs poll and landed 25 times. */
+function enqueue(chatId: string, entries: readonly QueuedSteer[]): void {
+	const s = state();
+	const queue = s.queues.get(chatId) ?? [];
+	for (const entry of entries) {
+		const existing = queue.find((e) => e.steer.id === entry.steer.id);
+		if (!existing) {
+			queue.push(entry);
+			continue;
+		}
+		const { resolve, reject } = existing;
+		existing.resolve = () => {
+			resolve();
+			entry.resolve();
+		};
+		existing.reject = (reason) => {
+			reject(reason);
+			entry.reject(reason);
+		};
+	}
+	s.queues.set(chatId, queue);
 }
 
 /** Hand every eligible pending marker to a live agent's steering queue
@@ -614,16 +639,12 @@ async function pump(chatId: string): Promise<void> {
 			if (status === 403) {
 				// Consent may have changed after the last gate. Preserve completed
 				// job/result ownership and wait for an explicit connection change.
-				const back = s.queues.get(chatId) ?? [];
-				back.push(...fire);
-				s.queues.set(chatId, back);
+				enqueue(chatId, fire);
 				parked = true;
 				return;
 			}
 			if (status === 409) {
-				const back = s.queues.get(chatId) ?? [];
-				back.push(...fire);
-				s.queues.set(chatId, back);
+				enqueue(chatId, fire);
 				await delay(RETRY_BACKOFF_MS[Math.min(attempt++, RETRY_BACKOFF_MS.length - 1)]!);
 				continue;
 			}
@@ -769,6 +790,9 @@ export function recoverStaleJobs(): void {
 				if (isJobLive(job.id)) continue; // provably executing here — never re-run beside it
 				if (!stores.chatStore.getChat(job.chatId)) continue;
 				if (isTurnRunning(job.chatId)) continue; // a wake turn may be delivering it right now
+				// Already in line (held behind an open question, say): re-queuing
+				// it on every poll is how one result once landed 25 times.
+				if (s.queues.get(job.chatId)?.some((e) => jobIdOf(e.steer) === job.id)) continue;
 				if (job.result) {
 					// The wake never fired (or crashed mid-flight): re-deliver.
 					const steer = buildSubagentSteer(job, job.result as never);
