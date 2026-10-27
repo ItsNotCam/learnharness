@@ -59,26 +59,41 @@ export type PadItem =
 
 /** A drag turned into the shape's defining corners. Shift keeps it regular:
  *  a circle, a square, an equilateral triangle, a 45° right triangle, or a
- *  line snapped to 15° steps. Pure. */
-export function constrainShape(shape: ShapeKind, from: Point, to: Point, regular: boolean): { from: Point; to: Point } {
-	if (!regular) return { from, to };
+ *  line snapped to 15° steps. Alt (`centered`) makes the press point the
+ *  shape's center: the far corner is mirrored through it, so circles,
+ *  boxes and triangles grow around it and a line or arrow extends both
+ *  ways (the arrowhead stays at the dragged end). Pure. */
+export function constrainShape(
+	shape: ShapeKind,
+	from: Point,
+	to: Point,
+	regular: boolean,
+	centered = false,
+): { from: Point; to: Point } {
+	const end = regular ? regularEnd(shape, from, to) : to;
+	if (!centered) return { from, to: end };
+	return { from: { x: 2 * from.x - end.x, y: 2 * from.y - end.y }, to: end };
+}
+
+/** The dragged end of a regular (Shift) shape, from its press point. */
+function regularEnd(shape: ShapeKind, from: Point, to: Point): Point {
 	const dx = to.x - from.x;
 	const dy = to.y - from.y;
 	if (shape === "line" || shape === "arrow") {
 		const length = Math.hypot(dx, dy);
 		const step = Math.PI / 12;
 		const angle = Math.round(Math.atan2(dy, dx) / step) * step;
-		return { from, to: { x: from.x + length * Math.cos(angle), y: from.y + length * Math.sin(angle) } };
+		return { x: from.x + length * Math.cos(angle), y: from.y + length * Math.sin(angle) };
 	}
 	if (shape === "triangle") {
 		// Equilateral: the drag's width sets the side, its direction the way up.
 		const side = Math.abs(dx);
 		const height = (side * Math.sqrt(3)) / 2;
-		return { from, to: { x: to.x, y: from.y + Math.sign(dy || 1) * height } };
+		return { x: to.x, y: from.y + Math.sign(dy || 1) * height };
 	}
 	// Circle, square, 45° right triangle: the box's longer side both ways.
 	const side = Math.max(Math.abs(dx), Math.abs(dy));
-	return { from, to: { x: from.x + Math.sign(dx || 1) * side, y: from.y + Math.sign(dy || 1) * side } };
+	return { x: from.x + Math.sign(dx || 1) * side, y: from.y + Math.sign(dy || 1) * side };
 }
 
 /** Where a pen stroke started with Shift ends: one straight line from where
