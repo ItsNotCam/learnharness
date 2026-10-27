@@ -417,39 +417,50 @@ export function customThemeClass(id: string): string {
 	return `lh-theme-${id}`;
 }
 
+/** The color a theme's syntax rules give `target`: the most specific
+ *  matching rule wins (a later rule on a tie), as in VS Code, so a broad
+ *  `markup` rule never beats `markup.inline.raw`. A rule matches by dotted
+ *  prefix, as TextMate does; with `deeper`, rules for more specific scopes
+ *  under the target count too. A nested selector ("text.html.markdown
+ *  markup.inline.raw") matches by its last part. Null when nothing matches.
+ *  Pure. */
+function scopeColor(theme: Pick<CustomTheme, "code">, target: string, deeper: boolean): string | null {
+	let best: { specificity: number; color: string } | null = null;
+	for (const rule of theme.code?.tokenColors ?? []) {
+		const fg = normalizeHexColor(rule.settings?.foreground);
+		if (!fg) continue;
+		const scopes = Array.isArray(rule.scope) ? rule.scope : String(rule.scope ?? "").split(",");
+		for (const raw of scopes) {
+			const s = raw.trim().split(/\s+/).pop() ?? "";
+			const matches = s === target || target.startsWith(`${s}.`) || (deeper && s.startsWith(`${target}.`));
+			if (!s || !matches) continue;
+			if (!best || s.length >= best.specificity) best = { specificity: s.length, color: fg };
+		}
+	}
+	return best?.color ?? null;
+}
+
+/** The theme's own color for inline code: its markdown syntax color for
+ *  inline raw text (`markup.inline.raw`, what VS Code's markdown grammar
+ *  gives `code`, or a rule for a scope under it), else plain raw markup
+ *  (`markup.raw`); null when the theme colors neither. Pure. */
+export function inlineCodeColor(theme: Pick<CustomTheme, "code">): string | null {
+	return scopeColor(theme, "markup.inline.raw", true) ?? scopeColor(theme, "markup.raw", true);
+}
+
+/** The theme's own color for math: its number color (`constant.numeric`,
+ *  or a broader `constant` rule); null when it colors neither. Rules for
+ *  narrower number scopes don't count: some themes give those to search
+ *  results ("constant.numeric.line-number.match"). Pure. */
+export function mathColor(theme: Pick<CustomTheme, "code">): string | null {
+	return scopeColor(theme, "constant.numeric", false);
+}
+
 /** The stylesheet for one stored theme: its tokens on its own class, plus
  *  the selection color. Every value it uses (id, type, colors, selection) is
  *  re-validated here, so nothing from the file reaches the CSS raw; the
- *  syntax rules aren't part of the CSS and aren't re-checked. Any invalid
- *  value renders nothing. */
-/** The theme's own color for inline code: its markdown syntax color for
- *  inline raw text (`markup.inline.raw`, what VS Code's markdown grammar
- *  gives `code`), else plain raw markup (`markup.raw`); null when the theme
- *  colors neither. A rule matches a scope by dotted prefix, as TextMate does.
- *  Pure. */
-export function inlineCodeColor(theme: Pick<CustomTheme, "code">): string | null {
-	const rules = theme.code?.tokenColors ?? [];
-	// The most specific matching rule wins (a later rule on a tie), as in
-	// VS Code: a broad `markup` rule never beats `markup.inline.raw`.
-	const colorFor = (target: string): string | null => {
-		let best: { specificity: number; color: string } | null = null;
-		for (const rule of rules) {
-			const fg = normalizeHexColor(rule.settings?.foreground);
-			if (!fg) continue;
-			const scopes = Array.isArray(rule.scope) ? rule.scope : String(rule.scope ?? "").split(",");
-			for (const raw of scopes) {
-				// A nested selector ("text.html.markdown markup.inline.raw")
-				// matches by its last part.
-				const s = raw.trim().split(/\s+/).pop() ?? "";
-				if (!s || !(s === target || target.startsWith(`${s}.`) || s.startsWith(`${target}.`))) continue;
-				if (!best || s.length >= best.specificity) best = { specificity: s.length, color: fg };
-			}
-		}
-		return best?.color ?? null;
-	};
-	return colorFor("markup.inline.raw") ?? colorFor("markup.raw");
-}
-
+ *  syntax rules aren't part of the CSS and aren't re-checked (the colors
+ *  taken from them are normalized hex). Any invalid value renders nothing. */
 export function customThemeCss(theme: CustomTheme): string {
 	if (!CUSTOM_THEME_ID.test(theme.id) || (theme.type !== "dark" && theme.type !== "light")) return "";
 	const selection = normalizeHexColor(theme.selection);
@@ -462,6 +473,8 @@ export function customThemeCss(theme: CustomTheme): string {
 	}
 	// Inline code: the theme's own color for it, else its error red.
 	vars += `--inline-code:${inlineCodeColor(theme) ?? "var(--destructive)"};`;
+	// Math: the theme's number color, else the plain text color.
+	vars += `--lh-math:${mathColor(theme) ?? "var(--foreground)"};`;
 	const cls = `.lh-custom.${customThemeClass(theme.id)}`;
 	return `${cls}{color-scheme:${theme.type};${vars}--lh-ink-strong:var(--foreground);--lh-ink-italic:var(--foreground);}${cls} ::selection{background:${selection};}`;
 }
