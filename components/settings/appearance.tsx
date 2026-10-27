@@ -47,6 +47,7 @@ export function resolveAppearance(delta: AppearanceSettings | undefined) {
 		fontFamily: delta?.fontFamily ?? f.fontFamily,
 		proseFontSize: delta?.proseFontSize ?? f.proseFontSize,
 		sessionNameSerif: delta?.sessionNameSerif ?? f.sessionNameSerif,
+		mathThemeColors: delta?.mathThemeColors ?? f.mathThemeColors,
 		mdRendering: {
 			headingWeight: delta?.mdRendering?.headingWeight ?? f.mdRendering.headingWeight,
 			boldColor: delta?.mdRendering?.boldColor ?? f.mdRendering.boldColor,
@@ -106,6 +107,9 @@ export function appearanceVars(a: ReturnType<typeof resolveAppearance>): Record<
 	// to the prose family — covers chat.tsx + new-session.tsx titles with
 	// zero component edits (they use the .font-title utility).
 	if (!a.sessionNameSerif) vars["--font-title"] = "var(--font-prose)";
+	// Math: the theme's math color only when switched on; unset, math keeps
+	// the text color (globals.css .lh-prose .katex).
+	if (a.mathThemeColors) vars["--lh-math-ink"] = "var(--lh-math)";
 	// Markdown rendering: heading weight + the emphasis inks (the vars
 	// were built "ready for the settings UI").
 	vars["--lh-heading-weight"] = String(a.mdRendering.headingWeight);

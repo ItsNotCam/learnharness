@@ -209,7 +209,7 @@ function parseHexOrNull(value: unknown, field: string): { color?: string | null;
 }
 
 /** appearance: { mode?, background?, fontFamily?, proseFontSize?,
- *  sessionNameSerif?, mdRendering?, customThemeId? } */
+ *  sessionNameSerif?, mathThemeColors?, mdRendering?, customThemeId? } */
 export function parseAppearanceSettingsBody(body: unknown): SettingsBodyResult<AppearanceSettings> {
 	const raw = asRecord(body);
 	if (!raw) return { ok: false, error: "Invalid JSON body" };
@@ -253,6 +253,12 @@ export function parseAppearanceSettingsBody(body: unknown): SettingsBodyResult<A
 			return { ok: false, error: "sessionNameSerif must be a boolean" };
 		}
 		settings.sessionNameSerif = raw.sessionNameSerif;
+	}
+	if (raw.mathThemeColors !== undefined) {
+		if (typeof raw.mathThemeColors !== "boolean") {
+			return { ok: false, error: "mathThemeColors must be a boolean" };
+		}
+		settings.mathThemeColors = raw.mathThemeColors;
 	}
 	if (raw.mdRendering !== undefined) {
 		const md = asRecord(raw.mdRendering);

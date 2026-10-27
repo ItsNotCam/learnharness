@@ -503,6 +503,14 @@ export function AppearanceSection({
 					onCommit={(v) => onSectionChange({ ...appearance, mdRendering: { ...md, italicColor: v === "" ? null : v } })}
 				/>
 			</SettingsRow>
+			{/* The owner's wording, verbatim. */}
+			<SettingsRow label="use theme colors for math shit" testid="row-math-theme-colors">
+				<Toggle
+					checked={appearance?.mathThemeColors ?? false}
+					label="use theme colors for math shit"
+					onChange={(on) => onSectionChange({ ...appearance, mathThemeColors: on })}
+				/>
+			</SettingsRow>
 		</>
 	);
 }

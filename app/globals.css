@@ -357,13 +357,16 @@ body {
 	color: var(--lh-ink-italic);
 }
 
-/* Math in teaching prose (inline and display KaTeX) takes --lh-math: a
-   blue in each built-in theme, an uploaded theme's number color (vscode-
-   theme.ts mathColor). A formula's own \color{} and KaTeX's error red
-   are inline styles and still win. Chrome glyphs (latex-glyph.tsx) live
-   outside .lh-prose and keep the text color. */
+/* Math in teaching prose (inline and display KaTeX) keeps the text color
+   unless the appearance setting "use theme colors for math shit" is on:
+   then --lh-math-ink is set to --lh-math (settings/appearance.tsx), a blue
+   in each built-in theme or an uploaded theme's number color (vscode-
+   theme.ts mathColor). currentColor as a color value inherits, so with it
+   off math looks exactly as it always did. A formula's own \color{} and
+   KaTeX's error red are inline styles and still win. Chrome glyphs
+   (latex-glyph.tsx) live outside .lh-prose. */
 .lh-prose .katex {
-	color: var(--lh-math);
+	color: var(--lh-math-ink, currentColor);
 }
 
 /* Markdown lists indent from the prose edge (owner ask, 2026-09-24):
