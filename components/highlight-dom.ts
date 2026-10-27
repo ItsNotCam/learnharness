@@ -294,7 +294,7 @@ export function positionOf(map: AnchorTextMap, node: Node, offset: number, side:
 }
 
 /** Is a viewport point inside any of these rects (with a small tolerance)? */
-export function pointInRects(rects: Iterable<DOMRectReadOnly>, x: number, y: number, tolerance = 2): boolean {
+export function pointInRects(rects: Iterable<{ left: number; top: number; right: number; bottom: number }>, x: number, y: number, tolerance = 2): boolean {
 	for (const r of rects) {
 		if (x >= r.left - tolerance && x <= r.right + tolerance && y >= r.top - tolerance && y <= r.bottom + tolerance) return true;
 	}
