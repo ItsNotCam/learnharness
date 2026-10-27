@@ -81,6 +81,19 @@ export function constrainShape(shape: ShapeKind, from: Point, to: Point, regular
 	return { from, to: { x: from.x + Math.sign(dx || 1) * side, y: from.y + Math.sign(dy || 1) * side } };
 }
 
+/** Where a pen stroke started with Shift ends: one straight line from where
+ *  it started, in the 45° direction nearest the cursor, as far along it as
+ *  the cursor is (the cursor projected onto it, as Photoshop does). Pure. */
+export function straightPenEnd(from: Point, to: Point): Point {
+	const step = Math.PI / 4;
+	const angle = Math.round(Math.atan2(to.y - from.y, to.x - from.x) / step) * step;
+	// Exact axes: cos(90°) is 6e-17, not 0.
+	const ux = Math.round(Math.cos(angle) * 1e12) / 1e12;
+	const uy = Math.round(Math.sin(angle) * 1e12) / 1e12;
+	const along = Math.max(0, (to.x - from.x) * ux + (to.y - from.y) * uy);
+	return { x: from.x + along * ux, y: from.y + along * uy };
+}
+
 /** What to stroke for a shape: an ellipse, a closed polygon, or open
  *  polylines (a line; an arrow's shaft and head). Screen y points down, so
  *  "top" is the smaller y. Pure. */

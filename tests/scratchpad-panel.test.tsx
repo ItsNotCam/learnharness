@@ -1,7 +1,8 @@
 /**
- * The floating scratchpad, interactively (linkedom + act, the calculator's
- * pattern): drawing with the pen and a shape, undo/redo by key, clear with
- * its confirm, per-lesson storage, a failed save, and Esc closing it.
+ * The scratchpad's drawing pad, interactively (linkedom + act, the
+ * calculator's pattern): drawing with the pen and a shape, undo/redo by key,
+ * clear with its confirm, per-lesson storage, a failed save, and its ✕ (Esc
+ * doesn't close it). The sidebar around it: scratchpad-sidebar.test.tsx.
  * linkedom has no canvas, so getContext returns a recording stub.
  */
 import React, { act } from "react";
@@ -157,6 +158,18 @@ describe("ScratchpadPanel", () => {
 		assert.equal(stored().length, 1);
 	});
 
+	it("draws the pen straight in 45° steps when Shift is held as the stroke starts", async () => {
+		await mount();
+		await drag([[100, 100], [140, 90], [200, 106]], { shiftKey: true });
+		const [line] = stored();
+		assert.equal(line!.kind, "stroke");
+		assert.deepEqual(line!.points, [{ x: 100, y: 100 }, { x: 200, y: 100 }], "one flat line, wobbles dropped");
+		await drag([[50, 50], [50, 50]], { shiftKey: true });
+		assert.deepEqual(stored()[1]!.points, [{ x: 50, y: 50 }], "a Shift-click leaves a dot");
+		await drag([[10, 10], [20, 25], [30, 25]]);
+		assert.equal(stored()[2]!.points!.length, 3, "no Shift: freehand");
+	});
+
 	it("clears only after the confirm, and the clear undoes", async () => {
 		await mount();
 		await drag([[10, 10], [20, 20]]);
@@ -185,35 +198,11 @@ describe("ScratchpadPanel", () => {
 		assert.match(el("scratchpad-unsaved").textContent ?? "", /Not saved/);
 	});
 
-	it("docks into the dock's right column when a side chat gives it up", async () => {
-		Object.assign(globalThis, { MutationObserver: (dom.window as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver });
-		const column = document.createElement("div");
-		column.setAttribute("data-dock-side-column", "");
-		(column as unknown as { getBoundingClientRect: () => object }).getBoundingClientRect = () => ({ left: 900, top: 300, right: 1600, bottom: 760, width: 700, height: 460 });
-		const sideChat = document.createElement("div");
-		sideChat.setAttribute("data-clarifier-panel", "");
-		column.appendChild(sideChat);
-		document.body.appendChild(column);
-		try {
-			await mount();
-			await act(async () => new Promise((r) => setTimeout(r, 450)));
-			const panel = el("scratchpad");
-			assert.notEqual(panel.style.left, "900px", "the side chat holds the column: the scratchpad floats");
-			await act(async () => {
-				sideChat.remove();
-				await new Promise((r) => setTimeout(r, 450));
-			});
-			assert.equal(panel.style.left, "900px", "docked at the column's left edge");
-			assert.equal(panel.style.width, "700px", "the column's full width");
-			assert.equal(panel.style.top, "320px", "standing on the column's bottom edge");
-		} finally {
-			column.remove();
-		}
-	});
-
-	it("closes on Esc", async () => {
+	it("closes with its ✕, never on Esc", async () => {
 		await mount();
 		await key("Escape");
+		assert.equal(closed, 0);
+		await click("scratchpad-close");
 		assert.equal(closed, 1);
 	});
 });
