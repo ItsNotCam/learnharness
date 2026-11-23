@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownIcon, ChevronRightIcon, MessageCircleQuestionIcon, PlayIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { finishDictation, isDictationActive, joinDictation, useDictationTarget } from "@/components/dictation";
-import { useEnterSubmits } from "@/components/enter-submits";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
 import {
@@ -408,7 +407,8 @@ function QuestionDockForm({
 	/* ENTER SUBMITS FROM ANYWHERE (owner round 6, 2026-10-05): the same
 	 * law as the practice dock — dictated answers rarely focus the field.
 	 * Rides submit() so the dictation-flush law is shared, not forked. */
-	useEnterSubmits(submit);
+	// BUTTON-ONLY SUBMIT (owner, 2026-11-23): no window-level Enter — the
+	// Submit answer button is the only way an answer leaves the dock.
 
 	// Selecting Other never clears the thinking field — two channels, the
 	// answer and the reasoning behind it, side by side.
@@ -537,11 +537,8 @@ function QuestionDockForm({
 				if (kbdIdx === null) return; // plain Space keeps scrolling the page
 				e.preventDefault();
 				kbdAct(kbdIdx);
-			} else if (e.key === "Enter") {
-				if (kbdIdx === null || !canSubmit) return;
-				e.preventDefault();
-				submit();
 			}
+			// Enter never submits a walked row (button-only submit, 2026-11-23).
 		};
 		document.addEventListener("keydown", onKeyDown);
 		return () => document.removeEventListener("keydown", onKeyDown);
@@ -744,10 +741,9 @@ function QuestionDockForm({
 											// else could ever happen in a one-line field) rides the
 											// same submit seam as the button, dictation finish-first
 											// included.
-											if (e.key === "Enter") {
-												e.preventDefault();
-												submit();
-											}
+											// Button-only submit (2026-11-23): Enter in the one-line
+											// field must not trigger the form's implicit submission.
+											if (e.key === "Enter") e.preventDefault();
 									}}
 									placeholder="Type your own answer…"
 									className="lh-input w-full min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
@@ -887,12 +883,7 @@ function QuestionDockForm({
 									onEscape();
 									return;
 								}
-								// Chat convention: Enter submits, Shift+Enter is a newline;
-								// ⌘/Ctrl+Enter also submits (universal across the app).
-								if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
-									e.preventDefault();
-									submit();
-								}
+								// Button-only submit (owner, 2026-11-23): Enter is a newline.
 							}}
 							placeholder="Type your answer…"
 							rows={1}
@@ -916,13 +907,7 @@ function QuestionDockForm({
 									onEscape();
 									return;
 								}
-								// THE STANDARD CHORD (owner round 5, 2026-10-05): Enter
-								// submits, Shift+Enter is a newline, ⌘/Ctrl+Enter works
-								// too — identical to the practice dock and the composer.
-								if (e.key === "Enter" && (!e.shiftKey || e.metaKey || e.ctrlKey)) {
-									e.preventDefault();
-									submit();
-								}
+								// Button-only submit (owner, 2026-11-23): Enter is a newline.
 							}}
 							placeholder="Why this answer? Whatever comes to mind."
 							rows={1}
@@ -936,7 +921,7 @@ function QuestionDockForm({
 					)}
 					<div className="flex items-center justify-between gap-2 p-1">
 						<span aria-hidden className="pl-1.5 text-xs text-muted-foreground">
-								{compactionRunning ? "compacting session…" : "↵ submits · ⇧↵ newline"}
+								{compactionRunning ? "compacting session…" : "click Submit answer · ↵ newline"}
 						</span>
 						<Button
 							type="submit"

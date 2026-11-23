@@ -105,13 +105,10 @@ export function Composer({
 						onEscape();
 						return;
 					}
-					// Chat convention: Enter sends, Shift+Enter is a newline.
-					// ⌘/Ctrl+Enter also sends — the universal submit shortcut
-					// across every input in the app (thinking field, answers).
-					if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
-						e.preventDefault();
-						act();
-					}
+					// BUTTON-ONLY SUBMIT (owner, 2026-11-23): Enter never sends,
+					// steers, stops or moves on — every Enter is a newline; the
+					// square is the one way to send (enterAction still decides
+					// what the click does).
 				}}
 				placeholder={placeholder}
 				autoFocus={autoFocus}

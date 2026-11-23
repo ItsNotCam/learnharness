@@ -284,10 +284,8 @@ export function Home({
 								dictation.cancel();
 								return;
 							}
-							if (e.key === "Enter" && !e.shiftKey) {
-								e.preventDefault();
-								void start();
-							}
+							// Button-only submit (owner, 2026-11-23): Enter is a newline;
+							// the start square begins the session.
 						}}
 						placeholder={mode === "practice" ? "What do you want to practice?" : "What do you want to learn?"}
 						autoFocus
