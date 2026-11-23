@@ -171,6 +171,8 @@ export function replanTrackTool(ctx: Pick<TrackToolContext, "chatId" | "chatStor
 				if (input.afterPartId !== undefined && !record.parts.some((p) => p.id === input.afterPartId)) {
 					return { ok: false, error: `afterPartId "${input.afterPartId}" is not a part of this track. Copy the id from the re-plan message, or omit it.` };
 				}
+				const note = input.note.trim();
+				if (note === "") return { ok: false, error: "The note is empty — say what changed, or that nothing did." };
 				const next = input.parts.map((p) => ({
 					id: p.id,
 					title: p.title,
@@ -187,7 +189,7 @@ export function replanTrackTool(ctx: Pick<TrackToolContext, "chatId" | "chatStor
 					at: new Date().toISOString(),
 					trackId: record.id,
 					afterPartId: input.afterPartId ?? null,
-					note: input.note.trim(),
+					note,
 					parts: ordered,
 				});
 				const changed = describeReplan(record.parts, ordered);
@@ -274,8 +276,12 @@ export function readPartTool(ctx: Pick<TrackToolContext, "chatId" | "chatStore" 
 				if (!chat) return { ok: false, error: `Part ${part.number}'s session is gone — nothing to read.` };
 				const passages = partPassages(chat.messages);
 				if (passages.length === 0) return `Part ${part.number} · ${part.title}: no teaching prose yet.`;
-				const window = readPartWindow(passages, input.offset ?? 0);
-				const head = `Part ${part.number} · ${part.title} — passages ${Math.min(input.offset ?? 0, passages.length) + 1}–${window.nextOffset ?? passages.length} of ${passages.length} (part id ${part.id}, session ${part.teachingChatId}).`;
+				const offset = input.offset ?? 0;
+				if (offset >= passages.length) {
+					return `Part ${part.number} · ${part.title} has ${passages.length} passage${passages.length === 1 ? "" : "s"} — offset ${offset} is past the end. Start at 0.`;
+				}
+				const window = readPartWindow(passages, offset);
+				const head = `Part ${part.number} · ${part.title} — passages ${offset + 1}–${window.nextOffset ?? passages.length} of ${passages.length} (part id ${part.id}, session ${part.teachingChatId}).`;
 				const tail = window.nextOffset !== null ? `\n\n[continues — call read_part again with offset ${window.nextOffset}]` : "\n\n[end of part]";
 				return `${head}\n\n${window.text}${tail}`;
 			}),

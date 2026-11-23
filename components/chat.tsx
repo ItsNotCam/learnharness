@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useChatSession } from "@/components/session";
 import { visibleQueuedSteers } from "@/components/session-core";
 import { SetupDialog } from "@/components/setup-dialog";
@@ -1386,14 +1387,14 @@ export function Chat({
 					    the track exists. */}
 					{track && (
 						<Hint label="Open the track" side="bottom">
-							<a
+							<Link
 								href={`/track/${encodeURIComponent(track.trackId)}`}
 								data-testid="track-chip"
 								className="lh-no-drag flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border/80 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground no-underline transition-colors hover:border-border hover:text-foreground"
 							>
 								<WaypointsIcon className="size-3.5" style={{ color: "var(--lh-track-accent)" }} aria-hidden />
 								Track
-							</a>
+							</Link>
 						</Hint>
 					)}
 					{/* The plan chip (owner, plan-placement round): session-level

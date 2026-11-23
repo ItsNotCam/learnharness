@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ChatListItem, TrackChatFacts, TrackEvent, TrackPartSpec, TrackView } from "../src/core/contracts.ts";
 import type { LhMessage } from "../src/core/native-messages.ts";
+import { newTrackContextMessage, reconstructRequestCause } from "../src/core/native-messages.ts";
 import {
 	assignPartNumbers,
 	buildsOnText,
@@ -293,6 +294,14 @@ describe("describeReplan / dependencyLabel / buildsOnText / unlocksText", () => 
 		const after = [...PARTS.filter((p) => p.id !== "p7"), spec("p5a", "5a", "A", [], "p5"), spec("p5b", "5b", "B", [], "p5"), spec("p8", "8", "Lens housing")];
 		assert.equal(describeReplan(PARTS, after), "split 5 into 5a, 5b; added 8 · Lens housing; dropped 7 · Camera-driven layer offsets");
 		assert.equal(describeReplan(PARTS, PARTS), "");
+		// A sub-part added to an ALREADY split part is an addition, not a split.
+		const grown = [...after, spec("p5c", "5c", "C", ["p5b"], "p5")];
+		assert.equal(describeReplan(after, grown), "added 5c · C");
+	});
+
+	it("a part chat's context marker is learner input: the opening continue is a foreground turn", () => {
+		const marker = newTrackContextMessage("[Track context] — part 1", { trackId: "trk", partId: "p1", role: "teaching" });
+		assert.equal(reconstructRequestCause([marker]), "foreground");
 	});
 
 	it("dependency labels read START / AFTER 1 / AFTER 2 AND 4", () => {

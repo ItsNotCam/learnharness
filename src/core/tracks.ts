@@ -425,7 +425,11 @@ export function describeReplan(before: readonly TrackPartSpec[], after: readonly
 	const beforeIds = new Map(before.map((p) => [p.id, p]));
 	const afterIds = new Map(after.map((p) => [p.id, p]));
 	const label = (p: TrackPartSpec) => `${p.number} · ${p.title}`;
-	const added = after.filter((p) => !beforeIds.has(p.id) && p.parentPartId === undefined);
+	// Added: a new top-level part, or a new sub-part under a part that was
+	// ALREADY split (a first split is reported as the split itself).
+	const added = after.filter(
+		(p) => !beforeIds.has(p.id) && (p.parentPartId === undefined || before.some((k) => k.parentPartId === p.parentPartId)),
+	);
 	const dropped = before.filter((p) => !afterIds.has(p.id));
 	const splits: string[] = [];
 	for (const p of after) {
@@ -545,7 +549,8 @@ export function partDoneOf(messages: readonly LhMessage[]): PartDoneFacts | null
 	return null;
 }
 
-/** Has part_done been CALLED (any state)? The tool's once-only gate. */
+/** Has a CLEAN part_done landed in the record? The tool's once-only gate:
+ *  a refused call (error result) does not count, so the model may retry. */
 export function hasPartDone(messages: readonly LhMessage[]): boolean {
 	return partDoneOf(messages) !== null;
 }

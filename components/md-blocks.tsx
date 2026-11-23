@@ -582,8 +582,11 @@ export function MarkdownAnchor(props: ComponentProps<"a"> & ExtraProps) {
 	const ctx = useContext(TrackChatContext);
 	const link = parsePartLink(href);
 	if (!link) {
+		// Streamdown's own anchor opens in a new tab (target=_blank,
+		// rel=noreferrer); the override keeps that default — an external link
+		// must never navigate the app away. Explicit props still win.
 		return (
-			<a href={href} className={className} {...rest}>
+			<a href={href} className={className} target="_blank" rel="noreferrer" {...rest}>
 				{children}
 			</a>
 		);

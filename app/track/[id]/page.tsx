@@ -19,5 +19,9 @@ export default async function TrackPage({
 	const [{ id }, { part }] = await Promise.all([params, searchParams]);
 	const track = getTrackView(id);
 	if (!track) notFound();
-	return <TrackOverview key={track.id} initial={track} initialPartId={typeof part === "string" && part.length > 0 ? part : null} />;
+	const initialPartId = typeof part === "string" && part.length > 0 ? part : null;
+	// Keyed on track AND part: a sidebar part row on this same overview
+	// navigates to ?part=<other>, and the selection must follow (the
+	// component seeds its selection once, at mount).
+	return <TrackOverview key={`${track.id}:${initialPartId ?? ""}`} initial={track} initialPartId={initialPartId} />;
 }

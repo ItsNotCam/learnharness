@@ -221,13 +221,19 @@ export function attachPractice(trackId: string, partId: string): StartPartOutcom
 	return { ok: true, chatId: chat.id, created: true };
 }
 
-export type ReplanRequestOutcome = { ok: true; planningChatId: string } | { ok: false; status: 404; error: string };
+export type ReplanRequestOutcome = { ok: true; planningChatId: string } | { ok: false; status: 404 | 409; error: string };
 
 /** ASK LH TO RE-PLAN: a learner-requested re-plan wake into the planning
  *  chat — the same wake pipeline part_done uses, a fresh id each time. */
 export function requestReplan(trackId: string): ReplanRequestOutcome {
 	const record = trackRecords().find((r) => r.id === trackId);
 	if (!record) return { ok: false, status: 404, error: "Unknown track" };
+	// The planning session can be deleted on its own (its row offers the
+	// ordinary session delete): nothing can re-plan then — refuse honestly
+	// instead of queueing a steer the pump rejects.
+	if (!stores.chatStore.getChat(record.planningChatId)) {
+		return { ok: false, status: 409, error: "The planning session of this track was deleted — there is nothing left to re-plan in." };
+	}
 	const steer = newTrackReplanSteer(trackReplanText({ trackTitle: record.title, part: null, summary: null, shaky: null }), {
 		trackId,
 		planningChatId: record.planningChatId,

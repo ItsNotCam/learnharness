@@ -344,6 +344,7 @@ export function RenameRow({ chat, onCommit, onCancel }: { chat: ChatListItem; on
 	return (
 		<div
 			data-testid="session-rename-row"
+			data-walk=""
 			className="relative mb-0.5 flex w-full items-center rounded-lg bg-accent px-3 py-2"
 		>
 			{/* NOTHING MOVES (owner, polish round): an idle row renders no
@@ -490,7 +491,7 @@ export function TreeRenameRow({ title, meta, onCommit, onCancel }: { title: stri
 		}
 	}, []);
 	return (
-		<div data-testid="track-rename-row" className="relative mb-0.5 flex items-stretch rounded-lg bg-accent">
+		<div data-testid="track-rename-row" data-walk="" className="relative mb-0.5 flex items-stretch rounded-lg bg-accent">
 			<span aria-hidden="true" className="w-6 shrink-0" />
 			<span className="flex min-w-0 flex-1 items-start gap-2 py-2 pr-3">
 				<span className="mt-[3px] flex size-4 shrink-0 items-center justify-center text-foreground/80">
@@ -618,6 +619,9 @@ function SessionsSidebar() {
 	const activeChatId = pathname.startsWith("/chat/") ? decodeURIComponent(pathname.slice("/chat/".length)) : null;
 	const activeTrackId = pathname.startsWith("/track/") ? decodeURIComponent(pathname.slice("/track/".length)) : null;
 	const tree = useMemo(() => trackTree(tracks ?? [], chats ?? []), [tracks, chats]);
+	// A started track's planning chat still carries its proposal; only a
+	// chat NO track owns is "proposed" (the search lists every chat).
+	const ownedChatIds = useMemo(() => new Set((tracks ?? []).flatMap((t) => t.chatIds)), [tracks]);
 	const items = useMemo<SidebarItem[] | null>(() => {
 		if (chats === null) return null;
 		const q = query.trim();
@@ -1125,7 +1129,7 @@ function SessionsSidebar() {
 								// A planning chat whose track hasn't started (docs/tracks.md
 								// §7.4): the "TRACK · PROPOSED" row, the track glyph, the
 								// proposed title — a chat row in every other respect.
-								if (c.proposedTrack) {
+								if (c.proposedTrack && !ownedChatIds.has(c.id)) {
 									return (
 										<TreeRow
 											key={c.id}

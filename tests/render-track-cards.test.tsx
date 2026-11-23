@@ -185,7 +185,7 @@ describe("MarkdownAnchor — the part:// chip", () => {
 		const loose = withCtx({}, <MarkdownAnchor href="part://distance-fields/msg_a1">x</MarkdownAnchor>);
 		assert.match(loose, /data-resolved="false"/);
 		const plain = withCtx({ track: TRACK }, <MarkdownAnchor href="https://example.com">site</MarkdownAnchor>);
-		assert.ok(plain.includes('<a href="https://example.com">site</a>'));
+		assert.ok(plain.includes('<a href="https://example.com" target="_blank" rel="noreferrer">site</a>'), "Streamdown's new-tab default survives the override");
 		assert.equal((mdComponents as { a?: unknown }).a, MarkdownAnchor);
 	});
 

@@ -242,6 +242,11 @@ describe("requestReplan — the learner's re-plan wake", () => {
 		assert.ok(steer.content?.includes("the learner asked you to re-plan"));
 		assert.equal(steer.details?.partId, null);
 		assert.deepEqual(tracks.requestReplan("trk_ghost"), { ok: false, status: 404, error: "Unknown track" });
+		// The planning session deleted on its own: nothing to re-plan in.
+		chatStore.deleteChat(chatId);
+		const gone = tracks.requestReplan(started.track.id);
+		assert.equal(gone.ok, false);
+		assert.equal(!gone.ok && gone.status, 409);
 	});
 });
 

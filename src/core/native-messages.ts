@@ -736,8 +736,12 @@ export function nativeInputCause(message: AgentMessage, history: readonly AgentM
 	if (message.role === "system" || message.role === "assistant") return "neutral";
 	if (message.role === "custom") {
 		if (["probe-handoff", "subagent-steer", "subagent-abort", "track-replan"].includes(message.customType)) return "automatic";
-		if (["practice-thinking", "practice-next"].includes(message.customType)) return "learner";
-		return ["graph-context", "plan-block", "problem-dismissed", "compaction", "track-context"].includes(message.customType) ? "neutral" : "unrecognizable";
+		// A part chat's context block counts as LEARNER input (docs/tracks.md
+		// §5): the learner opened the session by clicking Start part, so the
+		// opening `continue` on the marker alone is a FOREGROUND turn — never
+		// deferred as automatic work on a subscription connection.
+		if (["practice-thinking", "practice-next", "track-context"].includes(message.customType)) return "learner";
+		return ["graph-context", "plan-block", "problem-dismissed", "compaction"].includes(message.customType) ? "neutral" : "unrecognizable";
 	}
 	if (message.role === "toolResult") {
 		if (!(QUESTION_TOOLS as readonly string[]).includes(message.toolName) || message.isError || message.details == null || (message.details as { dismissed?: boolean }).dismissed) return "neutral";

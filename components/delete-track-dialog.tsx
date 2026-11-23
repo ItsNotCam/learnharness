@@ -44,12 +44,12 @@ export function DeleteTrackDialog({
 			if (e.key === "Escape") {
 				e.preventDefault();
 				e.stopPropagation();
-				onClose();
+				if (!busy) onClose(); // like the backdrop: an in-flight delete is not dismissable
 			}
 		};
 		document.addEventListener("keydown", onKeyDown);
 		return () => document.removeEventListener("keydown", onKeyDown);
-	}, [track, onClose]);
+	}, [track, busy, onClose]);
 
 	const run = async () => {
 		if (!track || busy) return;

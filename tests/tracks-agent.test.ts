@@ -183,6 +183,8 @@ describe("replan_track", () => {
 		const tools = replanTrackTool({ chatId: planningChatId, chatStore, trackStore });
 		const started = tracks.startPart(trackId, "distance-fields");
 		assert.ok(started.ok);
+		const blank = await run(tools, "replan_track", { note: "   ", parts: PROPOSAL.parts });
+		assert.match(blank.details.error ?? "", /note is empty/);
 		const badAfter = await run(tools, "replan_track", { afterPartId: "nope", note: "n", parts: PROPOSAL.parts });
 		assert.match(badAfter.details.error ?? "", /afterPartId "nope"/);
 		const dropped = await run(tools, "replan_track", { note: "n", parts: PROPOSAL.parts.filter((p) => p.id !== "distance-fields").map((p) => ({ ...p, dependsOn: [] })) });
@@ -278,6 +280,8 @@ describe("read_part", () => {
 		assert.ok(read.text.includes("TEACHER [t2]\nSigned:"));
 		assert.ok(!read.text.includes("\nok\n"), "the learner's side is not in the passages");
 		assert.ok(read.text.endsWith("[end of part]"));
+		const past = await run(partTools, "read_part", { partId: "distance-fields", offset: 40 });
+		assert.match(past.text, /has 2 passages — offset 40 is past the end/);
 	});
 
 	it("readPartWindow: budgets by characters, always fits one passage, and points at the continuation", () => {
