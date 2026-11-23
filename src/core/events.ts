@@ -52,6 +52,12 @@ export interface ServerEvents {
 	 *  highlight routes (the store stays silent). `source` is the writing
 	 *  tab's id, so that tab can skip its own echo; others refetch. */
 	"highlights-changed": { chatId: string; source?: string };
+	/** The tracks ledger grew (docs/tracks.md): a track was created, re-planned,
+	 *  a part started, a practice session attached, a rename, a deletion. The
+	 *  sidebar tree, the overview and the part rail refetch. (`chatId` is
+	 *  declared absent so the union keeps the other events' `.chatId` reads
+	 *  typed — a track event never names a chat.) */
+	"tracks-changed": { trackId?: string; chatId?: undefined };
 }
 
 export type ServerEventType = keyof ServerEvents;
@@ -68,6 +74,7 @@ export const SERVER_EVENT_TYPES = [
 	"record-changed",
 	"compaction-changed",
 	"highlights-changed",
+	"tracks-changed",
 ] as const satisfies readonly ServerEventType[];
 
 /** One notification: the type discriminates the payload. */

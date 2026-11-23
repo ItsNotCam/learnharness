@@ -1,7 +1,7 @@
 import { abortExtraction, extractionStatuses } from "../agent/subagents/extraction.ts";
 import { coverageOf } from "../core/coverage.ts";
 import { deleteChatTraces, type ChatDeleteMode, type ChatDeletionStats } from "../core/graph-deletion.ts";
-import { titleFromPrompt } from "../core/contracts.ts";
+import { titleFromPrompt, type ChatRecord } from "../core/contracts.ts";
 import { graphRevision } from "./graph.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
@@ -22,6 +22,27 @@ import { closeAcpSessions } from "../agent/acp/engine.ts";
 export const { createChat, getChat, listChats } = stores.chatStore;
 export { titleFromPrompt };
 export type { ChatDeleteMode, ChatDeletionStats } from "../core/graph-deletion.ts";
+
+/**
+ * Every newborn session's birth (per-session models, owner 2026-09-28):
+ * create the record and stamp it VERBATIM from the strong slot — the
+ * new-session default. From here the strong slot never reaches the session
+ * again (in-session picks write the session's own record). No strong slot
+ * configured (fresh BYOK boot) → no stamp; the turn gate refuses honestly.
+ * Shared by POST /api/chats and the track service (part and practice
+ * sessions are newborns too — docs/tracks.md §5).
+ */
+export function newbornChat(title: string, kind?: "practice"): ChatRecord {
+	const chat = stores.chatStore.createChat(title, kind);
+	const strong = stores.settingsStore.readSettings()?.models?.strong;
+	if (strong?.model) {
+		stores.chatStore.saveSettings(chat.id, {
+			model: { provider: strong.model.provider, id: strong.model.id },
+			thinkingLevel: strong.thinkingLevel,
+		});
+	}
+	return chat;
+}
 
 /** How long the wind-down wait may take before the caller gets a retryable
  *  503 (an aborted extraction ends at its next model-call boundary —

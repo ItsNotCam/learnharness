@@ -27,6 +27,7 @@ import type {
 	SessionCheckpoint,
 	TurnUsage,
 	NotesSource,
+	TrackEvent,
 } from "./contracts.ts";
 import type { UserSettings } from "./settings.ts";
 
@@ -170,6 +171,20 @@ export interface JobStore {
 	 *  route refuses while jobs are still running, so by the time this
 	 *  fires every record is terminal. */
 	deleteJobsForChat(chatId: string): number;
+}
+
+// ─── TrackStore — the tracks event ledger (docs/tracks.md, 2026-11-22) ──────────
+
+/**
+ * The append-only track ledger (data/tracks/tracks.jsonl): created /
+ * replanned / part-started / practice-attached / renamed / deleted events.
+ * The track service (src/server/tracks.ts) is the sole writer; the fold
+ * (core/tracks.ts foldTracks) and every status are derived at read time.
+ * Reads return the raw append-order events — the store never decides.
+ */
+export interface TrackStore {
+	appendEvent(event: TrackEvent): void;
+	readEvents(): TrackEvent[];
 }
 
 // ─── SettingsStore — THE user settings record (settings-storage wave, 2026-09-19) ──

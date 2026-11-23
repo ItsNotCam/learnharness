@@ -330,6 +330,10 @@ export interface ChatSummary {
 	 *  summary spread (the picker never needs it from here; the full record
 	 *  is its source). */
 	settings?: ChatSettings;
+	/** Tracks (docs/tracks.md): the title of the latest clean propose_track
+	 *  call when the chat is a planning chat — the sidebar's "TRACK ·
+	 *  PROPOSED" row until the track starts. Derived from the transcript. */
+	proposedTrack?: string;
 }
 
 /** The sidebar's session row: a summary + live liveness. The chats list
