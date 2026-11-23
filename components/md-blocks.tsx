@@ -27,8 +27,11 @@
  * EXPAND icon (opens the session overlay) when a chat page is mounted.
  */
 
-import { cloneElement, isValidElement, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
-import { CheckIcon, CopyIcon, MaximizeIcon } from "lucide-react";
+import { cloneElement, isValidElement, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import Link from "next/link";
+import { ArrowUpRightIcon, CheckIcon, CopyIcon, MaximizeIcon } from "lucide-react";
+import { TrackChatContext } from "@/components/track-context";
+import { parsePartLink, partLinkHref } from "@/src/core";
 import { cn } from "@/lib/utils";
 import {
 	CodeBlock,
@@ -567,10 +570,52 @@ export function MarkdownStrong(props: ComponentProps<"strong"> & ExtraProps) {
 	);
 }
 
+/** The `part://<partId>/<messageId>` citation (docs/tracks.md §7): inside a
+ *  track part the teacher cites an earlier part's passage with a link whose
+ *  target is a part id + message id; it renders as a "TAUGHT IN PART N ·
+ *  title" chip that opens the earlier session at that message. Resolved
+ *  through the chat's TrackChatContext; outside a track (or for an unknown
+ *  part) the chip is inert and names the part id, never a dead href. Every
+ *  other link renders as a plain anchor. */
+export function MarkdownAnchor(props: ComponentProps<"a"> & ExtraProps) {
+	const { children, href, node, className, ...rest } = props;
+	const ctx = useContext(TrackChatContext);
+	const link = parsePartLink(href);
+	if (!link) {
+		// Streamdown's own anchor opens in a new tab (target=_blank,
+		// rel=noreferrer); the override keeps that default — an external link
+		// must never navigate the app away. Explicit props still win.
+		return (
+			<a href={href} className={className} target="_blank" rel="noreferrer" {...rest}>
+				{children}
+			</a>
+		);
+	}
+	const target = ctx.track ? partLinkHref(link, ctx.track) : null;
+	const chipClass =
+		"lh-part-chip mx-0.5 inline-flex max-w-full items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 align-baseline font-mono text-[11px] uppercase tracking-[0.04em] text-foreground/80 no-underline transition-colors hover:border-muted-foreground/60 hover:text-foreground";
+	const title = typeof children === "string" ? children : undefined;
+	if (!target) {
+		return (
+			<span data-testid="part-link-chip" data-part={link.partId} data-resolved="false" className={cn(chipClass, "cursor-default text-muted-foreground")} title={title}>
+				<ArrowUpRightIcon className="size-3" aria-hidden />
+				Part {link.partId}
+			</span>
+		);
+	}
+	return (
+		<Link href={target.href} data-testid="part-link-chip" data-part={link.partId} data-resolved="true" className={chipClass} title={title}>
+			<ArrowUpRightIcon className="size-3" aria-hidden />
+			{target.label}
+		</Link>
+	);
+}
+
 export const mdComponents = {
 	code: MarkdownCode,
 	table: MarkdownTable,
 	span: MathDisplay,
 	strong: MarkdownStrong,
 	blockquote: MarkdownBlockquote,
+	a: MarkdownAnchor,
 };

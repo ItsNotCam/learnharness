@@ -435,6 +435,27 @@ function projectMarker(marker: LhMarkerMessage, out: LhViewMessage[]): void {
 			// UI-only (the ask-style dismissal): the synthesized conclude
 			// pair — which rides the NEXT input — carries the record's face.
 			return;
+		case "track-context": {
+			// A part chat's context block (docs/tracks.md): user-side
+			// scaffolding like the graph-context pick — a collapsible card,
+			// never a bubble. The card reads the content + details.
+			out.push({
+				id: marker.id,
+				role: "user",
+				parts: [{ type: "data-track-context", id: `tc_${marker.id}`, data: { content: marker.content, details: marker.details } }],
+			});
+			return;
+		}
+		case "track-replan": {
+			// The re-plan wake in the planning chat: a labeled divider ("Re-plan
+			// after part N"), the probe-handoff's register — scaffolding, not speech.
+			out.push({
+				id: marker.id,
+				role: "user",
+				parts: [{ type: "data-track-replan", id: `tr_${marker.id}`, data: marker.details }],
+			});
+			return;
+		}
 		case "compaction": {
 			// THE MOMENT DIVIDER (owner round 14): minimal centered small
 			// text at the compaction moment — where the user currently is

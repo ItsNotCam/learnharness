@@ -76,6 +76,10 @@
 	--lh-mark-ring: rgb(148, 148, 148);
 	--lh-callout-border: #ffffff;
 	--lh-strong-line: #ffffff;
+	/* Tracks (docs/tracks.md): the in-progress accent — the one colored
+	   state in the track map and the sidebar tree (an amber on the dark
+	   grays; each theme below picks its own). */
+	--lh-track-accent: #e2b33c;
 	/* Lesson highlights (fork feature): translucent tints painted behind
 	   text via ::highlight(), plus solid swatches for the menu and panel. */
 	--lh-hl-yellow: rgb(250 204 21 / 0.3);
@@ -130,6 +134,7 @@
 	--lh-mark-ring: rgb(148, 148, 148);
 	--lh-callout-border: #ffffff;
 	--lh-strong-line: #ffffff;
+	--lh-track-accent: #e2b33c;
 	/* Lesson highlights (fork feature): translucent tints painted behind
 	   text via ::highlight(), plus solid swatches for the menu and panel. */
 	--lh-hl-yellow: rgb(250 204 21 / 0.3);
@@ -178,6 +183,7 @@
 	--lh-mark-ring: #8a3b2c;
 	--lh-callout-border: #8a3b2c;
 	--lh-strong-line: #2b2520;
+	--lh-track-accent: #a8720e;
 	--lh-hl-yellow: rgb(245 200 40 / 0.42);
 	--lh-hl-green: rgb(120 190 80 / 0.32);
 	--lh-hl-blue: rgb(90 150 230 / 0.28);
@@ -231,6 +237,7 @@
 	--lh-mark-ring: #61afef;
 	--lh-callout-border: #c678dd;
 	--lh-strong-line: #abb2bf;
+	--lh-track-accent: #e5c07b;
 	--lh-hl-yellow: rgb(229 192 123 / 0.3);
 	--lh-hl-green: rgb(152 195 121 / 0.28);
 	--lh-hl-blue: rgb(97 175 239 / 0.28);

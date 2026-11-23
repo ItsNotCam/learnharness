@@ -5,8 +5,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { MenuShell } from "@/components/menu-shell";
 import { DeleteSessionDialog } from "@/components/delete-session-dialog";
-import type { ChatDeleteMode } from "@/src/core";
-import { DumbbellIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
+import { DeleteTrackDialog } from "@/components/delete-track-dialog";
+import { PartStatusIcon, PracticeGlyph, SessionGlyph, TrackGlyph, splitDisplayStatus } from "@/components/track-icons";
+import type { ChatDeleteMode, SidebarTreeRow, TrackPartView, TrackView } from "@/src/core";
+import { flattenTrackTree, trackTree } from "@/src/core";
+import { ChevronRightIcon, DumbbellIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
 import { ActivitySection } from "@/components/activity-dock";
 import { CoverageMenuBlock } from "@/components/extraction-coverage";
 import { LhMark } from "@/components/lh-mark";
@@ -297,6 +300,7 @@ export function SessionRow({
 			onClick={onOpen}
 			onContextMenu={onContextMenu}
 			data-testid={kbdSelected ? "session-row-kbd" : "session-row"}
+			data-walk=""
 			className={cn(
 				"relative mb-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent",
 				active && "bg-accent",
@@ -340,6 +344,7 @@ export function RenameRow({ chat, onCommit, onCancel }: { chat: ChatListItem; on
 	return (
 		<div
 			data-testid="session-rename-row"
+			data-walk=""
 			className="relative mb-0.5 flex w-full items-center rounded-lg bg-accent px-3 py-2"
 		>
 			{/* NOTHING MOVES (owner, polish round): an idle row renders no
@@ -373,11 +378,186 @@ export function RenameRow({ chat, onCommit, onCancel }: { chat: ChatListItem; on
 	);
 }
 
+/**
+ * THE TREE ROW (docs/tracks.md §7.1): one row of the sidebar's track tree —
+ * a track, its planning session, a part (or sub-part), or a session under a
+ * part. Indented by depth, an expand caret when it has children, the status
+ * glyph, an optional mono number before the label, and the meta line
+ * (accent-colored for "you are here"). Pure function of its props; exported
+ * for render tests. Loose chats keep SessionRow.
+ */
+export function TreeRow({
+	depth,
+	icon,
+	caret,
+	number,
+	label,
+	meta,
+	metaAccent = false,
+	muted = false,
+	size = "md",
+	active = false,
+	kbdSelected = false,
+	onOpen,
+	onContextMenu,
+	testid,
+}: {
+	depth: number;
+	icon: React.ReactNode;
+	/** Present = expandable: the caret toggles. */
+	caret?: { open: boolean; onToggle: () => void };
+	number?: string;
+	label: string;
+	meta: string;
+	metaAccent?: boolean;
+	/** Later parts read quieter. */
+	muted?: boolean;
+	size?: "lg" | "md" | "sm";
+	active?: boolean;
+	kbdSelected?: boolean;
+	onOpen: () => void;
+	onContextMenu?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+	testid?: string;
+}) {
+	return (
+		<div
+			data-testid={testid}
+			data-walk=""
+			className={cn(
+				"relative mb-0.5 flex items-stretch rounded-lg transition-colors",
+				active && "bg-accent",
+				kbdSelected && !active && "bg-accent/60 ring-1 ring-border",
+			)}
+			style={{ paddingLeft: depth * 14 }}
+		>
+			{caret ? (
+				<button
+					type="button"
+					aria-label={`${caret.open ? "Collapse" : "Expand"} ${label}`}
+					aria-expanded={caret.open}
+					data-testid="tree-caret"
+					onClick={(e) => {
+						e.stopPropagation();
+						caret.onToggle();
+					}}
+					className="flex w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+				>
+					<ChevronRightIcon className={cn("size-3.5 transition-transform duration-150", caret.open && "rotate-90")} aria-hidden="true" />
+				</button>
+			) : (
+				<span aria-hidden="true" className="w-6 shrink-0" />
+			)}
+			<button
+				type="button"
+				onClick={onOpen}
+				onContextMenu={onContextMenu}
+				className="flex min-w-0 flex-1 items-start gap-2 rounded-lg py-2 pr-3 text-left transition-colors hover:bg-accent/60"
+			>
+				<span className="mt-[3px] flex size-4 shrink-0 items-center justify-center [&_svg]:size-[15px]">{icon}</span>
+				<span className="min-w-0 flex-1">
+					<span
+						className={cn(
+							"block truncate font-prose leading-5",
+							size === "lg" ? "text-(length:--lh-prose-size)" : size === "sm" ? "text-[14px]" : "text-[15px]",
+							muted ? "text-foreground/60" : "text-foreground",
+						)}
+					>
+						{number && <span className="mr-1.5 font-ui text-xs text-muted-foreground">{number}</span>}
+						{label}
+					</span>
+					<span
+						className={cn("block truncate text-xs", !metaAccent && "text-muted-foreground")}
+						style={metaAccent ? { color: "var(--lh-track-accent)" } : undefined}
+					>
+						{meta}
+					</span>
+				</span>
+			</button>
+		</div>
+	);
+}
+
+/** The inline rename for a track row: the TreeRow's geometry with the
+ *  title line swapped for an input (RenameRow's rules — select-all on
+ *  entry, Enter/blur commit, Esc discards). */
+export function TreeRenameRow({ title, meta, onCommit, onCancel }: { title: string; meta: string; onCommit: (next: string) => void; onCancel: () => void }) {
+	const [draft, setDraft] = useState(title);
+	const inputRef = useRef<HTMLInputElement | null>(null);
+	useEffect(() => {
+		const el = inputRef.current;
+		if (el) {
+			el.focus();
+			el.select();
+		}
+	}, []);
+	return (
+		<div data-testid="track-rename-row" data-walk="" className="relative mb-0.5 flex items-stretch rounded-lg bg-accent">
+			<span aria-hidden="true" className="w-6 shrink-0" />
+			<span className="flex min-w-0 flex-1 items-start gap-2 py-2 pr-3">
+				<span className="mt-[3px] flex size-4 shrink-0 items-center justify-center text-foreground/80">
+					<TrackGlyph className="size-[15px]" aria-hidden="true" />
+				</span>
+				<span className="flex min-w-0 flex-1 flex-col">
+					<input
+						ref={inputRef}
+						value={draft}
+						spellCheck={false}
+						onChange={(e) => setDraft(e.target.value)}
+						onBlur={() => onCommit(draft)}
+						onKeyDown={(e) => {
+							if (e.key === "Enter") e.currentTarget.blur();
+							if (e.key === "Escape") {
+								e.stopPropagation();
+								onCancel();
+							}
+						}}
+						aria-label="Rename track"
+						data-testid="track-rename-input"
+						className="lh-input w-full min-w-0 truncate border-0 border-b border-border bg-transparent px-0 text-foreground outline-none"
+					/>
+					<span className="block truncate text-xs text-muted-foreground">{meta}</span>
+				</span>
+			</span>
+		</div>
+	);
+}
+
+/** A part row's meta: the status, or what it waits for. Pure, exported for tests. */
+export function partMeta(part: TrackPartView, parts: readonly TrackPartView[]): string {
+	switch (part.status) {
+		case "done":
+			return "Done";
+		case "in-progress":
+			return "In progress";
+		case "ready":
+			return "Ready to start";
+		case "split":
+			return `Split into ${part.children.length} part${part.children.length === 1 ? "" : "s"}`;
+		case "later": {
+			const waiting = part.dependsOn
+				.map((id) => parts.find((p) => p.id === id))
+				.filter((p): p is TrackPartView => p !== undefined && p.status !== "done")
+				.map((p) => p.number);
+			if (waiting.length === 0) return "Later";
+			if (waiting.length <= 2) return `After ${waiting.join(" and ")}`;
+			return `After ${waiting.slice(0, -1).join(", ")} and ${waiting[waiting.length - 1]}`;
+		}
+	}
+}
+
+/** One rendered list item: a tree row, a loose/searched chat, or a track hit. */
+type SidebarItem =
+	| { type: "tree"; row: SidebarTreeRow }
+	| { type: "chat"; chat: ChatListItem }
+	| { type: "track-hit"; track: TrackView };
+
 /** The three-way kind filter (practice sessions, owner 2026-10-04):
  *  Teaching / All / Practice — a client-side filter over the same
  *  snapshot, persisted in localStorage, defaulting to All. */
 export type SessionKindFilter = "teach" | "all" | "practice";
 const KIND_FILTER_KEY = "lh:session-kind-filter";
+/** The tree's expand/collapse choices (docs/tracks.md §7.1), per browser. */
+const TREE_OPEN_KEY = "lh:sidebar-tree-open";
 
 function SessionsSidebar() {
 	const { open, toggle } = useSidebar();
@@ -392,6 +572,31 @@ function SessionsSidebar() {
 		setKindFilter(f);
 		window.localStorage.setItem(KIND_FILTER_KEY, f);
 	}, []);
+	/* TRACKS (docs/tracks.md §7.1): the tree's second data source — the
+	   derived track views — and the learner's expand/collapse choices,
+	   persisted per browser (an absent key takes the default the flatten
+	   computes: the active track and the part in progress open). */
+	const [tracks, setTracks] = useState<TrackView[] | null>(null);
+	const [openKeys, setOpenKeys] = useState<Record<string, boolean>>({});
+	useEffect(() => {
+		try {
+			const stored = window.localStorage.getItem(TREE_OPEN_KEY);
+			if (stored) setOpenKeys(JSON.parse(stored) as Record<string, boolean>);
+		} catch {
+			/* a corrupt entry reads as the defaults */
+		}
+	}, []);
+	const toggleKey = useCallback((key: string, open: boolean) => {
+		setOpenKeys((prev) => {
+			const next = { ...prev, [key]: !open };
+			try {
+				window.localStorage.setItem(TREE_OPEN_KEY, JSON.stringify(next));
+			} catch {
+				/* storage blocked: in-memory for this page */
+			}
+			return next;
+		});
+	}, []);
 	const pathname = usePathname();
 	const router = useRouter();
 	const { open: openSettings } = useSettingsDialog();
@@ -404,23 +609,67 @@ function SessionsSidebar() {
 		router.push("/chat/new");
 	}, [router]);
 
-	/* FUZZY (owner round 8, 2026-10-05): subsequence match ranked by
-	 * fuzzyScore — prefix beats word-boundary beats scattered. Empty query
-	 * keeps the natural list order (scores are all 0, sort is stable). */
-	const shown = useMemo(() => {
+	/* THE TREE (docs/tracks.md §7.1): tracks → parts → sub-parts → sessions,
+	 * then the loose chats; PRACTICE lists practice sessions flat (attached
+	 * ones included). A search flattens everything: every chat fuzzily (loose
+	 * and attached alike) plus tracks by title.
+	 *
+	 * FUZZY (owner round 8, 2026-10-05): subsequence match ranked by
+	 * fuzzyScore — prefix beats word-boundary beats scattered. */
+	const activeChatId = pathname.startsWith("/chat/") ? decodeURIComponent(pathname.slice("/chat/".length)) : null;
+	const activeTrackId = pathname.startsWith("/track/") ? decodeURIComponent(pathname.slice("/track/".length)) : null;
+	const tree = useMemo(() => trackTree(tracks ?? [], chats ?? []), [tracks, chats]);
+	// A started track's planning chat still carries its proposal; only a
+	// chat NO track owns is "proposed" (the search lists every chat).
+	const ownedChatIds = useMemo(() => new Set((tracks ?? []).flatMap((t) => t.chatIds)), [tracks]);
+	const items = useMemo<SidebarItem[] | null>(() => {
+		if (chats === null) return null;
 		const q = query.trim();
-		let list = chats;
-		if (list && kindFilter !== "all") {
-			list = list.filter((c) => (c.kind ?? "teach") === kindFilter);
+		if (q) {
+			const chatHits = chats
+				.map((c) => ({ c, score: fuzzyScore(q, c.title) }))
+				.filter((r): r is { c: ChatListItem; score: number } => r.score !== null)
+				.sort((a, b) => b.score - a.score)
+				.map((r): SidebarItem => ({ type: "chat", chat: r.c }));
+			const trackHits = (tracks ?? [])
+				.map((t) => ({ t, score: fuzzyScore(q, t.title) }))
+				.filter((r): r is { t: TrackView; score: number } => r.score !== null)
+				.sort((a, b) => b.score - a.score)
+				.map((r): SidebarItem => ({ type: "track-hit", track: r.t }));
+			return [...trackHits, ...chatHits];
 		}
-		if (!list) return list;
-		if (!q) return list;
-		return list
-			.map((c) => ({ c, score: fuzzyScore(q, c.title) }))
-			.filter((r): r is { c: (typeof list)[number]; score: number } => r.score !== null)
-			.sort((a, b) => b.score - a.score)
-			.map((r) => r.c);
-	}, [chats, query, kindFilter]);
+		if (kindFilter === "practice") {
+			return chats.filter((c) => (c.kind ?? "teach") === "practice").map((c): SidebarItem => ({ type: "chat", chat: c }));
+		}
+		const rows = flattenTrackTree(tree, {
+			isOpen: (key, fallback) => openKeys[key] ?? fallback,
+			activeChatId,
+			activeTrackId,
+			filter: kindFilter,
+		}).map((row): SidebarItem => ({ type: "tree", row }));
+		const loose = tree.loose
+			.filter((c) => kindFilter === "all" || (c.kind ?? "teach") === "teach")
+			.map((c): SidebarItem => ({ type: "chat", chat: c }));
+		return [...rows, ...loose];
+	}, [chats, tracks, tree, query, kindFilter, openKeys, activeChatId, activeTrackId]);
+
+	/** Where an item goes when opened (click or the search walk's Enter). */
+	const openItem = useCallback(
+		(item: SidebarItem) => {
+			setKbdIndex(null);
+			if (item.type === "chat") router.push(`/chat/${item.chat.id}`);
+			else if (item.type === "track-hit") router.push(`/track/${encodeURIComponent(item.track.id)}`);
+			else {
+				const row = item.row;
+				if (row.kind === "track") router.push(`/track/${encodeURIComponent(row.node.track.id)}`);
+				else if (row.kind === "planning") router.push(`/chat/${encodeURIComponent(row.node.track.planningChatId)}`);
+				else if (row.kind === "part") router.push(`/track/${encodeURIComponent(row.node.track.id)}?part=${encodeURIComponent(row.part.id)}`);
+				else if (row.kind === "session") router.push(`/chat/${encodeURIComponent(row.session.id)}`);
+				else router.push(`/chat/${row.chat.id}`);
+			}
+		},
+		[router],
+	);
 
 	const refreshInFlightRef = useRef(false);
 	const refresh = useCallback(async () => {
@@ -430,12 +679,20 @@ function SessionsSidebar() {
 		if (refreshInFlightRef.current) return;
 		refreshInFlightRef.current = true;
 		try {
-			const res = await fetch("/api/chats", { cache: "no-store" });
-			const d = (await res.json()) as { chats: ChatListItem[] };
+			const [chatsRes, tracksRes] = await Promise.all([
+				fetch("/api/chats", { cache: "no-store" }),
+				fetch("/api/tracks", { cache: "no-store" }),
+			]);
+			const d = (await chatsRes.json()) as { chats: ChatListItem[] };
 			setChats(d.chats);
+			if (tracksRes.ok) {
+				const t = (await tracksRes.json()) as { tracks: TrackView[] };
+				setTracks(t.tracks);
+			}
 		} catch {
 			// a transient failure keeps the last snapshot
 			setChats((prev) => prev ?? []);
+			setTracks((prev) => prev ?? []);
 		} finally {
 			refreshInFlightRef.current = false;
 		}
@@ -506,6 +763,9 @@ function SessionsSidebar() {
 	useServerEvent("turn-started", scheduleEventRefresh);
 	useServerEvent("turn-settled", scheduleEventRefresh);
 	useServerEvent("compaction-changed", scheduleEventRefresh);
+	// The tracks ledger (docs/tracks.md): created / re-planned / part
+	// started / practice attached / renamed / deleted — the tree refetches.
+	useServerEvent("tracks-changed", scheduleEventRefresh);
 	useServerResync(() => void refreshRef.current());
 	useEffect(
 		() => () => {
@@ -540,11 +800,23 @@ function SessionsSidebar() {
 	const ctxAnchorRef = useRef<HTMLElement | null>(null);
 	const [renamingId, setRenamingId] = useState<string | null>(null);
 	const [deleting, setDeleting] = useState<ChatListItem | null>(null);
+	// The track row's menu (docs/tracks.md §8): Rename / Delete… for a track —
+	// the same shell, the same dismissal contract, its own dialog.
+	const [ctxTrackId, setCtxTrackId] = useState<string | null>(null);
+	const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
+	const [deletingTrack, setDeletingTrack] = useState<TrackView | null>(null);
 
 	const openContext = (e: React.MouseEvent<HTMLButtonElement>, chat: ChatListItem) => {
 		e.preventDefault(); // suppress the native menu
 		ctxAnchorRef.current = e.currentTarget;
+		setCtxTrackId(null);
 		setCtxChatId(chat.id);
+	};
+	const openTrackContext = (e: React.MouseEvent<HTMLButtonElement>, track: TrackView) => {
+		e.preventDefault();
+		ctxAnchorRef.current = e.currentTarget;
+		setCtxChatId(null);
+		setCtxTrackId(track.id);
 	};
 
 	// The menu contract (agent-section's): any pointerdown outside the menu
@@ -552,17 +824,21 @@ function SessionsSidebar() {
 	// or folds the sidebar. Right-clicking another row re-anchors: its
 	// pointerdown closes this menu, its contextmenu opens the next.
 	useEffect(() => {
-		if (ctxChatId === null) return;
+		if (ctxChatId === null && ctxTrackId === null) return;
+		const close = () => {
+			setCtxChatId(null);
+			setCtxTrackId(null);
+		};
 		const onPointerDown = (e: PointerEvent) => {
 			const target = e.target as Node;
 			if (target instanceof Element && target.closest("[data-lh-menu]")) return;
 			if (ctxAnchorRef.current?.contains(target)) return;
-			setCtxChatId(null);
+			close();
 		};
 		const onKeyDown = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
 				e.stopPropagation();
-				setCtxChatId(null);
+				close();
 			}
 		};
 		document.addEventListener("pointerdown", onPointerDown);
@@ -571,7 +847,40 @@ function SessionsSidebar() {
 			document.removeEventListener("pointerdown", onPointerDown);
 			document.removeEventListener("keydown", onKeyDown);
 		};
-	}, [ctxChatId]);
+	}, [ctxChatId, ctxTrackId]);
+
+	// Track rename: PUT the title, patch the snapshot (the ledger's
+	// tracks-changed event refetches anyway — this is the instant).
+	const commitTrackRename = useCallback(async (id: string, next: string) => {
+		setRenamingTrackId(null);
+		const t = next.trim();
+		if (t === "") return;
+		try {
+			const res = await fetch(`/api/tracks/${encodeURIComponent(id)}`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title: t }),
+			});
+			if (!res.ok) throw new Error(`rename failed: ${res.status}`);
+			setTracks((prev) => (prev ? prev.map((tr) => (tr.id === id ? { ...tr, title: t } : tr)) : prev));
+		} catch (err) {
+			console.error("track rename failed:", err);
+		}
+	}, []);
+
+	// Track deleted: drop it (and its sessions) from the snapshot, leave
+	// any of its pages, announce the graph revision like a session delete.
+	const onTrackDeleted = useCallback(
+		(id: string, _mode: ChatDeleteMode, graphRevision: number) => {
+			const gone = tracks?.find((t) => t.id === id);
+			setDeletingTrack(null);
+			setTracks((prev) => (prev ? prev.filter((t) => t.id !== id) : prev));
+			if (gone) setChats((prev) => (prev ? prev.filter((c) => !gone.chatIds.includes(c.id)) : prev));
+			if (pathname === `/track/${id}` || (gone && activeChatId && gone.chatIds.includes(activeChatId))) router.push("/");
+			window.dispatchEvent(new CustomEvent("lh:graph-revision", { detail: { revision: graphRevision } }));
+		},
+		[tracks, pathname, activeChatId, router],
+	);
 
 	// Inline rename (owner ruling, wave 6): the row swaps to a text input;
 	// commit rides the SAME plumbing as the header rename — PUT the title,
@@ -621,11 +930,11 @@ function SessionsSidebar() {
 		return () => window.removeEventListener("lh:kbd-sessions-search", onFocusSearch);
 	}, [open, toggle]);
 
-	// Keep the kbd-selected row in view (the rows are the container's only
-	// buttons, so the index matches).
+	// Keep the kbd-selected row in view (every walkable row carries
+	// data-walk — tree rows included; carets are not walk targets).
 	useEffect(() => {
 		if (kbdIndex === null) return;
-		listRef.current?.querySelectorAll("button")[kbdIndex]?.scrollIntoView({ block: "nearest" });
+		listRef.current?.querySelectorAll("[data-walk]")[kbdIndex]?.scrollIntoView({ block: "nearest" });
 	}, [kbdIndex]);
 
 	useEffect(() => {
@@ -741,7 +1050,7 @@ function SessionsSidebar() {
 								}
 								// Modified keys belong to the surface (⇧↵ etc.).
 								if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-								const n = shown?.length ?? 0;
+								const n = items?.length ?? 0;
 								if (n === 0) return;
 								if (e.key === "ArrowDown" || e.key === "ArrowUp") {
 									// The rows move, not the caret.
@@ -753,11 +1062,10 @@ function SessionsSidebar() {
 									return;
 								}
 								if (e.key === "Enter") {
-									const target = shown![kbdIndex !== null && kbdIndex < n ? kbdIndex : 0];
+									const target = items![kbdIndex !== null && kbdIndex < n ? kbdIndex : 0];
 									if (!target) return;
 									e.preventDefault();
-									router.push(`/chat/${target.id}`);
-									setKbdIndex(null);
+									openItem(target);
 									e.currentTarget.blur();
 								}
 							}}
@@ -797,35 +1105,183 @@ function SessionsSidebar() {
 				</div>
 
 				<div ref={listRef} className="flex-1 overflow-y-auto p-2">
-					{shown === null ? (
+					{items === null ? (
 						<div className="px-2 py-4 text-xs text-muted-foreground">Loading…</div>
-					) : shown.length === 0 ? (
+					) : items.length === 0 ? (
 						<div className="px-2 py-4 text-xs text-muted-foreground">
 							{query.trim() ? "No sessions match." : "No sessions yet."}
 						</div>
 					) : (
-						shown.map((c, i) =>
-							renamingId === c.id ? (
-								<RenameRow
-									key={c.id}
-									chat={c}
-									onCommit={(next) => void commitRename(c.id, next)}
-									onCancel={() => setRenamingId(null)}
-								/>
-							) : (
-								<SessionRow
-									key={c.id}
-									chat={c}
-									active={pathname === `/chat/${c.id}`}
-									kbdSelected={i === kbdIndex}
-									onOpen={() => {
-										setKbdIndex(null);
-										router.push(`/chat/${c.id}`);
-									}}
-									onContextMenu={(e) => openContext(e, c)}
-								/>
-							),
-						)
+						items.map((item, i) => {
+							const kbdSelected = i === kbdIndex;
+							if (item.type === "chat") {
+								const c = item.chat;
+								if (renamingId === c.id) {
+									return (
+										<RenameRow
+											key={c.id}
+											chat={c}
+											onCommit={(next) => void commitRename(c.id, next)}
+											onCancel={() => setRenamingId(null)}
+										/>
+									);
+								}
+								// A planning chat whose track hasn't started (docs/tracks.md
+								// §7.4): the "TRACK · PROPOSED" row, the track glyph, the
+								// proposed title — a chat row in every other respect.
+								if (c.proposedTrack && !ownedChatIds.has(c.id)) {
+									return (
+										<TreeRow
+											key={c.id}
+											depth={0}
+											icon={<TrackGlyph className="text-foreground/80" aria-hidden="true" />}
+											label={c.proposedTrack}
+											meta={c.busy ? "Track · proposed · working…" : "Track · proposed"}
+											metaAccent
+											size="lg"
+											active={activeChatId === c.id}
+											kbdSelected={kbdSelected}
+											onOpen={() => openItem(item)}
+											onContextMenu={(e) => openContext(e, c)}
+											testid="proposed-track-row"
+										/>
+									);
+								}
+								return (
+									<SessionRow
+										key={c.id}
+										chat={c}
+										active={activeChatId === c.id}
+										kbdSelected={kbdSelected}
+										onOpen={() => openItem(item)}
+										onContextMenu={(e) => openContext(e, c)}
+									/>
+								);
+							}
+							if (item.type === "track-hit") {
+								const t = item.track;
+								return (
+									<TreeRow
+										key={`hit-${t.id}`}
+										depth={0}
+										icon={<TrackGlyph className="text-foreground/80" aria-hidden="true" />}
+										label={t.title}
+										meta={`Track · ${t.progress.done} of ${t.progress.total} done`}
+										size="lg"
+										active={activeTrackId === t.id}
+										kbdSelected={kbdSelected}
+										onOpen={() => openItem(item)}
+										onContextMenu={(e) => openTrackContext(e, t)}
+										testid="track-row"
+									/>
+								);
+							}
+							const row = item.row;
+							switch (row.kind) {
+								case "track": {
+									const t = row.node.track;
+									if (renamingTrackId === t.id) {
+										return (
+											<TreeRenameRow
+												key={row.key}
+												title={t.title}
+												meta={`Track · ${t.progress.done} of ${t.progress.total} done`}
+												onCommit={(next) => void commitTrackRename(t.id, next)}
+												onCancel={() => setRenamingTrackId(null)}
+											/>
+										);
+									}
+									return (
+										<TreeRow
+											key={row.key}
+											depth={0}
+											icon={<TrackGlyph className="text-foreground/80" aria-hidden="true" />}
+											caret={{ open: row.open, onToggle: () => toggleKey(row.key, row.open) }}
+											label={t.title}
+											meta={`Track · ${t.progress.done} of ${t.progress.total} done`}
+											size="lg"
+											active={activeTrackId === t.id}
+											kbdSelected={kbdSelected}
+											onOpen={() => openItem(item)}
+											onContextMenu={(e) => openTrackContext(e, t)}
+											testid="track-row"
+										/>
+									);
+								}
+								case "planning": {
+									const chat = row.chat;
+									const replans = row.node.track.replans.length;
+									return (
+										<TreeRow
+											key={row.key}
+											depth={row.depth}
+											icon={<SessionGlyph className="text-muted-foreground" aria-hidden="true" />}
+											label="Planning"
+											meta={
+												chat && (chat.busy || chat.compacting || chat.pendingQuestion)
+													? sessionMeta(chat)
+													: `Placement probe${replans > 0 ? ` · ${replans} re-plan${replans === 1 ? "" : "s"}` : ""}`
+											}
+											size="sm"
+											active={activeChatId === row.node.track.planningChatId}
+											kbdSelected={kbdSelected}
+											onOpen={() => openItem(item)}
+											onContextMenu={chat ? (e) => openContext(e, chat) : undefined}
+											testid="planning-row"
+										/>
+									);
+								}
+								case "part": {
+									const part = row.part;
+									const display = part.status === "split" ? splitDisplayStatus(part, row.node.track.parts) : part.status;
+									return (
+										<TreeRow
+											key={row.key}
+											depth={row.depth}
+											icon={<PartStatusIcon status={display} className={display === "done" || display === "ready" ? "text-foreground/80" : undefined} />}
+											caret={row.expandable ? { open: row.open, onToggle: () => toggleKey(row.key, row.open) } : undefined}
+											number={part.number}
+											label={part.title}
+											meta={partMeta(part, row.node.track.parts)}
+											muted={display === "later"}
+											kbdSelected={kbdSelected}
+											onOpen={() => openItem(item)}
+											testid="part-row"
+										/>
+									);
+								}
+								case "session": {
+									const chat = row.chat;
+									const here = activeChatId === row.session.id;
+									const base = chat ? sessionMeta(chat) : timeAgo(row.session.updatedAt);
+									const practice = row.session.kind === "practice";
+									return (
+										<TreeRow
+											key={row.key}
+											depth={row.depth}
+											icon={
+												practice ? (
+													<PracticeGlyph className="text-muted-foreground" aria-hidden="true" />
+												) : (
+													<SessionGlyph className="text-muted-foreground" aria-hidden="true" />
+												)
+											}
+											label={practice ? "Practice" : "Teaching"}
+											meta={here ? `You are here · ${base}` : row.session.doneAt && !practice ? `Done · ${timeAgo(row.session.doneAt)}` : base}
+											metaAccent={here}
+											size="sm"
+											active={here}
+											kbdSelected={kbdSelected}
+											onOpen={() => openItem(item)}
+											onContextMenu={chat ? (e) => openContext(e, chat) : undefined}
+											testid={practice ? "practice-session-row" : "teaching-session-row"}
+										/>
+									);
+								}
+								case "loose":
+									return null;
+							}
+						})
 					)}
 				</div>
 
@@ -921,12 +1377,52 @@ function SessionsSidebar() {
 					</MenuShell>
 				)}
 
+				{/* The track row's menu (docs/tracks.md §8): Rename / Delete… —
+				    the same shell, the same dismissal contract as the session menu. */}
+				{ctxTrackId !== null && (
+					<MenuShell
+						anchorRef={ctxAnchorRef}
+						testid="track-context-menu"
+						preferredSide="down"
+						menuClass="flex w-52 flex-col gap-0.5 rounded-xl border bg-card p-2 text-xs shadow-xl"
+					>
+						<button
+							type="button"
+							data-testid="ctx-track-rename"
+							onClick={() => {
+								setRenamingTrackId(ctxTrackId);
+								setCtxTrackId(null);
+							}}
+							className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent"
+						>
+							Rename
+						</button>
+						<button
+							type="button"
+							data-testid="ctx-track-delete"
+							onClick={() => {
+								const target = tracks?.find((t) => t.id === ctxTrackId);
+								if (target) setDeletingTrack(target);
+								setCtxTrackId(null);
+							}}
+							className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
+						>
+							Delete track…
+						</button>
+					</MenuShell>
+				)}
+
 				{/* The two-option delete dialog (wave 6) — portaled to body
 				    by the component itself, lives here for state locality. */}
 				<DeleteSessionDialog
 					chat={deleting}
 					onClose={() => setDeleting(null)}
 					onDeleted={onDeleted}
+				/>
+				<DeleteTrackDialog
+					track={deletingTrack}
+					onClose={() => setDeletingTrack(null)}
+					onDeleted={onTrackDeleted}
 				/>
 			</aside>
 	);

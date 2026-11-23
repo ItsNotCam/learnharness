@@ -24,7 +24,10 @@ import { lsTool } from "./tools/ls.ts";
 import { findTool } from "./tools/find.ts";
 import { grepTool } from "./tools/grep.ts";
 import { healToolRecord } from "./tools/heal.ts";
-import type { GraphStore } from "../core/ports.ts";
+import { partDoneTool, proposeTrackTool, readPartTool, replanTrackTool } from "./tools/track.ts";
+import { foldTracks } from "../core/tracks.ts";
+import type { SteerMessage } from "../core/contracts.ts";
+import type { ChatStore, GraphStore, TrackStore } from "../core/ports.ts";
 
 export { jobTools };
 export type { ProbeDoneContext } from "./tools/probe.ts";
@@ -276,6 +279,27 @@ export interface ProberToolContext extends ProbeDoneContext {
 	 *  master switch AND the agent.graphTools toggle (settings-resolution).
 	 *  Absent = the gate is closed, no map tools (tests drive this seam). */
 	graphStore?: GraphStore;
+	/** Learning tracks (docs/tracks.md §4): the ledger port — present = the
+	 *  track tools register. Absent (tests, bare agents) = no track tools. */
+	trackStore?: TrackStore;
+	/** This chat's track membership: null/undefined = a loose chat (the
+	 *  prober may propose a track); "teaching" = a part chat (read_part). */
+	trackRole?: "planning" | "teaching" | "practice" | null;
+}
+
+/** The track tools a registry gets for its chat's role (docs/tracks.md §4):
+ *  a LOOSE chat's prober may propose; a PART chat's prober and teacher read
+ *  earlier parts; the teacher of a part chat also owns part_done (added by
+ *  the caller — it is always-on like probe_done). */
+function trackToolsFor(
+	ctx: Pick<ProberToolContext, "chatId" | "chatStore" | "trackStore" | "trackRole">,
+	who: "prober" | "teacher",
+): Record<string, AgentTool<any>> {
+	if (!ctx.trackStore) return {};
+	const base = { chatId: ctx.chatId, chatStore: ctx.chatStore, trackStore: ctx.trackStore };
+	if (ctx.trackRole === "teaching") return readPartTool(base);
+	if (who === "prober" && (ctx.trackRole === null || ctx.trackRole === undefined)) return proposeTrackTool(base);
+	return {};
 }
 
 /** The prober's tool set: probe quiz (no nodeId) + ask + the learner-fs
@@ -339,12 +363,62 @@ export function createProberTools(
 				...(ctx.graphStore
 					? proberGraphTools({ chatStore: ctx.chatStore, graphStore: ctx.graphStore })
 					: {}),
+				// Learning tracks (docs/tracks.md §4): propose_track in a loose
+				// chat, read_part in a part chat — nothing in a planning chat
+				// (the planner owns it from the proposal on).
+				...trackToolsFor(ctx, "prober"),
 				...done,
 			},
 				withoutMechanics(enabled),
 			),
 			...done,
 		});
+}
+
+// ─── the planner's tools (docs/tracks.md §4) ─────────────────────────────────
+
+/** The planner's registry context: the planning chat's stores + the job
+ *  wiring (research/pdf) + the gated graph reader. */
+export interface PlannerToolContext {
+	chatId: string;
+	chatStore: ChatStore;
+	trackStore: TrackStore;
+	jobStore: JobStore;
+	spawn: ProberToolContext["spawn"];
+	searchAvailable?: () => boolean;
+	graphStore?: GraphStore;
+}
+
+/**
+ * The PLANNER's tool set: ask + the learner-fs set + research/pdf + the
+ * graph reader (gated) + the track tools of the chat's stage —
+ * propose_track until the track starts ("Change something"), replan_track
+ * + read_part after. No quizzing, no teaching, no plan tools.
+ */
+export function createPlannerTools(ctx: PlannerToolContext, enabled?: EnabledTools): Record<string, AgentTool<any>> {
+	const jobs = jobTools({ chatId: ctx.chatId, jobStore: ctx.jobStore, spawn: ctx.spawn, searchAvailable: ctx.searchAvailable });
+	const base = { chatId: ctx.chatId, chatStore: ctx.chatStore, trackStore: ctx.trackStore };
+	const started = foldTracks(ctx.trackStore.readEvents()).some((r) => r.planningChatId === ctx.chatId);
+	// The stage tools are always-on (re-added after the filter, the
+	// probe_done discipline): a planner that cannot plan is a lockout.
+	const stage = started ? { ...replanTrackTool(base), ...readPartTool(base) } : proposeTrackTool(base);
+	return healToolRecord({
+		...filterEnabledTools(
+			{
+				ask_user_question: askUserQuestionTool,
+				read: readTool,
+				ls: lsTool,
+				find: findTool,
+				grep: grepTool,
+				...(jobs.research ? { research: jobs.research } : {}),
+				pdf: jobs.pdf!,
+				...(ctx.graphStore ? proberGraphTools({ chatStore: ctx.chatStore, graphStore: ctx.graphStore }) : {}),
+				...stage,
+			},
+			withoutMechanics(enabled),
+		),
+		...stage,
+	});
 }
 
 // ─── the teacher's question tools (quiz carries the position field) ──────────
@@ -400,6 +474,12 @@ export interface TeacherToolContext extends PlanToolContext {
 	spawn: (job: JobRecord, input: ResearchInput | DemoInput | VisualInput | PdfInput) => void;
 	/** Retained search-status seam; research dispatch is available keylessly. */
 	searchAvailable?: () => boolean;
+	/** Learning tracks (docs/tracks.md §4): present with trackRole
+	 *  "teaching" = this is a part chat — part_done + read_part register. */
+	trackStore?: TrackStore;
+	trackRole?: "planning" | "teaching" | "practice" | null;
+	/** The wake pipeline for part_done's re-plan steer. */
+	deliver?: (steer: SteerMessage) => void;
 }
 
 /**
@@ -443,9 +523,16 @@ export function createTeacherTools(
 	// two differently-typed literals collapses into an unusable union type.
 	const quizzing: Record<string, AgentTool<any>> =
 		mechanics === "free" ? { explain: teachExplainToolFor(ctx) } : { quiz: teachQuizToolFor(ctx) };
+	// Learning tracks (docs/tracks.md §4): in a part chat the teacher owns
+	// part_done — always-on like probe_done (it is how the part ENDS) — and
+	// read_part. Loose chats and planning chats get neither.
+	const partDone =
+		ctx.trackStore && ctx.trackRole === "teaching" && ctx.deliver
+			? partDoneTool({ chatId: ctx.chatId, chatStore: ctx.chatStore, trackStore: ctx.trackStore, deliver: ctx.deliver })
+			: {};
 	// healToolRecord — same standard as the prober's registry (above).
-	return healToolRecord(
-		filterEnabledTools(
+	return healToolRecord({
+		...filterEnabledTools(
 			{
 			...quizzing,
 			ask_user_question: askUserQuestionTool,
@@ -459,8 +546,11 @@ export function createTeacherTools(
 			grep: grepTool,
 			...planTools(ctx),
 			...jobTools({ chatId: ctx.chatId, jobStore: ctx.jobStore, spawn: ctx.spawn, searchAvailable: ctx.searchAvailable }),
+			...trackToolsFor(ctx, "teacher"),
+			...partDone,
 		},
 		withoutMechanics(enabled),
 		),
-	);
+		...partDone,
+	});
 }

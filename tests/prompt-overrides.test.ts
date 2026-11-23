@@ -178,12 +178,16 @@ describe("the source-derived segment list", () => {
 			[
 				"system-prompt.md",
 				"prober/10-probe-doctrine.md",
+				// Learning tracks (docs/tracks.md §4): the placement doctrine.
+				"prober/20-tracks.md",
 				"shared/10-voice.md",
 				"shared/15-accuracy.md",
 				"shared/16-mental-model.md",
 				"shared/20-question-tools.md",
 				"shared/25-confidence.md",
 				"shared/30-learner-files.md",
+				// Learning tracks: the part-chat doctrine, phase-neutral by construction.
+				"shared/35-track-parts.md",
 				"shared/40-formatting.md",
 			],
 		);

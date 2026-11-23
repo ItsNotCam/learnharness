@@ -33,6 +33,14 @@ import { quizDisplayInputSchema, askInputSchema, askOptionProblems, quizInputPro
 import { repairMathForDisplay } from "./math-delims.ts";
 import { healEncodedArguments } from "./argument-heal.ts";
 import { probeDoneInputSchema, type ProbeDoneInput } from "./contracts/probe.ts";
+import {
+	partDoneInputSchema,
+	proposeTrackInputSchema,
+	replanTrackInputSchema,
+	type PartDoneInput,
+	type ProposeTrackInput,
+	type ReplanTrackInput,
+} from "./contracts/track.ts";
 
 /** The pi-boundary parse step, mirrored here (live-smoke fix, 2026-09-26):
  *  pi-ai's validateToolArguments runs TypeBox's Value.Convert on the model's
@@ -136,4 +144,21 @@ export function parseExplainInput(input: unknown): ExplainToolInput | undefined 
 /** probe_done parse — the core-owned schema the tool itself declares. */
 export function parseProbeDoneInput(input: unknown): ProbeDoneInput | undefined {
 	return boundaryParse<ProbeDoneInput>(probeDoneInputSchema, input);
+}
+
+// ─── the track tools (docs/tracks.md) — the same schemas the tools declare ───
+
+/** propose_track parse: the proposal view and the start-track seam read it. */
+export function parseProposeTrackInput(input: unknown): ProposeTrackInput | undefined {
+	return boundaryParse<ProposeTrackInput>(proposeTrackInputSchema, input);
+}
+
+/** replan_track parse: the planning chat's re-plan cards read it. */
+export function parseReplanTrackInput(input: unknown): ReplanTrackInput | undefined {
+	return boundaryParse<ReplanTrackInput>(replanTrackInputSchema, input);
+}
+
+/** part_done parse: the derivation reads the summary off the call. */
+export function parsePartDoneInput(input: unknown): PartDoneInput | undefined {
+	return boundaryParse<PartDoneInput>(partDoneInputSchema, input);
 }

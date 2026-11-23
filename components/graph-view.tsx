@@ -958,12 +958,43 @@ export function GraphChromeRow({
 	);
 }
 
+/** The track filter's visible set (docs/tracks.md §7, the graph's TRACK
+ *  pill): the propositions any of the track's chats touched, plus every
+ *  implication node whose premises and conclusion all survive — the track's
+ *  own subgraph, chains intact. Composed with the search query. Pure,
+ *  exported for tests. */
+export function filteredNodeIds(
+	snapshot: Pick<GraphSnapshot, "nodes" | "nodeSessions" | "impLinks">,
+	query: string,
+	sessionFilter: { chatIds: readonly string[] } | null | undefined,
+): Set<string> {
+	const set = new Set<string>();
+	const chats = sessionFilter ? new Set(sessionFilter.chatIds) : null;
+	const imps = new Set(snapshot.impLinks.map((l) => l.id));
+	for (const node of snapshot.nodes) {
+		if (!isNodeVisible(node, query)) continue;
+		if (chats && !imps.has(node.id) && !(snapshot.nodeSessions[node.id] ?? []).some((id) => chats.has(id))) continue;
+		set.add(node.id);
+	}
+	if (chats) {
+		for (const link of snapshot.impLinks) {
+			if ([...link.premises, link.conclusion].every((id) => set.has(id))) set.add(link.id);
+			else set.delete(link.id);
+		}
+	}
+	return set;
+}
+
 export function GraphView({
 	chainSelectOpen = false,
 	practiceSelection,
 	onPracticeSelectionChange,
 	onChainSelectClose,
+	sessionFilter = null,
 }: {
+	/** Learning tracks (docs/tracks.md §7): /?track=<id> — only the nodes
+	 *  the track's sessions touched render (filteredNodeIds). */
+	sessionFilter?: { title: string; chatIds: readonly string[] } | null;
 	/** PRACTICE SELECT (owner vision, 2026-10-04): the LIFTED, persistent
 	 *  pick set — every check/clear in the chain table (however opened)
 	 *  reports the full node list up immediately; the composer-side chip
@@ -1062,14 +1093,10 @@ export function GraphView({
 
 	// The id set that survives the current search — consumed by the
 	// visibility feed and the "no matches" hint.
-	const visibleIds = useMemo(() => {
-		const set = new Set<string>();
-		if (snapshot)
-			for (const node of snapshot.nodes) {
-				if (isNodeVisible(node, query)) set.add(node.id);
-			}
-		return set;
-	}, [snapshot, query]);
+	const visibleIds = useMemo(
+		() => (snapshot ? filteredNodeIds(snapshot, query, sessionFilter) : new Set<string>()),
+		[snapshot, query, sessionFilter],
+	);
 
 	// Fetch the derived graph. Re-runs when a background pipeline run
 	// finishes (refreshTick) — its merges just landed in the ledger.
@@ -1447,10 +1474,10 @@ export function GraphView({
 	// Feed #3 — visibility: hidden nodes drop out of rendering, picking,
 	// hover, AND labels; edges drop when either endpoint is hidden.
 	useEffect(() => {
-		rendererRef.current?.setVisible(query.trim() ? visibleIds : null);
+		rendererRef.current?.setVisible(query.trim() || sessionFilter ? visibleIds : null);
 		// The open detail card cannot outlive its node's visibility.
 		setSelected((sel) => (sel && visibleIds.has(sel.node.id) ? sel : null));
-	}, [visibleIds, query]);
+	}, [visibleIds, query, sessionFilter]);
 
 	// Feed #4 — region tuning. `isEmpty` in the deps (same as Feed #2):
 	// the settings fetch resolves BEFORE the snapshot creates the renderer,

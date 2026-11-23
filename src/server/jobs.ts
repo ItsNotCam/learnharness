@@ -486,6 +486,11 @@ function chatIdOf(steer: SteerMessage): string {
 	if (steer.customType === "probe-handoff") {
 		return (steer.details as { chatId: string }).chatId;
 	}
+	// The track re-plan (docs/tracks.md §6) wakes the PLANNING chat — named
+	// in its details; it has no job either.
+	if (steer.customType === "track-replan") {
+		return (steer.details as { planningChatId: string }).planningChatId;
+	}
 	// The chat is resolvable from the job record; the steer's details
 	// carry jobId, which indexes the store.
 	const jobId = jobIdOf(steer);

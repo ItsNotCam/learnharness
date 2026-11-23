@@ -17,6 +17,7 @@ import { CURRENT_CHAT_VERSION } from "../core/contracts.ts";
 import type { LhMessage } from "../core/native-messages.ts";
 import { activeProblemOf, danglingQuestionOf } from "../core/native-messages.ts";
 import { phaseAt3Lh } from "../core/phases.ts";
+import { latestTrackProposal } from "../core/tracks.ts";
 
 function chatFile(id: string): string {
 	if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error(`Invalid chat id: ${id}`);
@@ -107,6 +108,10 @@ function listChats(): ChatSummary[] {
 						// NOT record-derived — the API route merges it (ChatListItem).
 						phase: phaseAt3Lh(messages),
 						pendingQuestion: danglingQuestionOf(messages) !== null,
+						pendingProblem: (summary.kind ?? "teach") === "practice" && activeProblemOf(messages) !== null,
+						// Tracks (docs/tracks.md): a planning chat's proposed title —
+						// the sidebar's "TRACK · PROPOSED" row until the track starts.
+						...(((title) => (title ? { proposedTrack: title } : {}))(latestTrackProposal(messages)?.input.title)),
 					};
 				} catch (err) {
 					console.error(`[chat ${summary.id}] summary projection failed:`, err);

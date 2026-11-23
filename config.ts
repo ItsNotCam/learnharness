@@ -84,6 +84,14 @@ export const SOURCES_FILE = path.join(PATHS.graph, "sources.json");
 export const POSITIONS_FILE = path.join(PATHS.graph, "positions.json");
 
 /**
+ * THE TRACKS LEDGER (docs/tracks.md, owner ruling 2026-11-22): one append-only
+ * JSONL of track events — created / replanned / part-started /
+ * practice-attached / renamed / deleted — for every track. The track service
+ * is the sole writer; records and statuses are derived at read time.
+ */
+export const TRACKS_FILE = path.join(DATA_ROOT, "tracks", "tracks.jsonl");
+
+/**
  * Graph render settings (the settings-panel controls): one small JSON blob,
  * read-modify-write. Shared shape/sanitizer: src/core/render-settings.ts.
  */

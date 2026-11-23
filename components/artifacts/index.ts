@@ -6,6 +6,7 @@ import { VisualCard } from "@/components/artifacts/visual-card";
 import { ProbeDoneCard } from "@/components/artifacts/probe-done-card";
 import { ToolCallCard } from "@/components/artifacts/tool-call-card";
 import { ProblemCard, ConcludeCard } from "@/components/practice-cards";
+import { PartDoneCard, TrackProposalCard, TrackReplanCard } from "@/components/track-cards";
 
 /**
  * Artifact renderer registry — the extension point for tool-part UI.
@@ -50,4 +51,11 @@ export const artifactRenderers: Record<string, ComponentType<ArtifactPartProps>>
 	// discipline (their results are pre-formatted strings too).
 	list_sessions: ToolCallCard,
 	list_propositions: ToolCallCard,
+	// Learning tracks (docs/tracks.md §7): the proposal card with its map
+	// and actions, the planner's re-plan note, the teacher's done summary;
+	// read_part is a plain tool-call card (its result is pre-formatted text).
+	propose_track: TrackProposalCard,
+	replan_track: TrackReplanCard,
+	part_done: PartDoneCard,
+	read_part: ToolCallCard,
 };

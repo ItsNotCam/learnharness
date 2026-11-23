@@ -1,12 +1,15 @@
 import type { Usage } from "@earendil-works/pi-ai";
 import { usageToCallUsage } from "../core/usage.ts";
 import {
+	createPlannerAgent,
 	createPracticeAgent,
 	createProberAgent,
 	createTeacherAgent,
 	type AgentBuildOptions,
 	type TeachingAgent,
 } from "../agent/teacher-agent.ts";
+import { hasTrackProposal } from "../core/tracks.ts";
+import { trackOfChat } from "./tracks.ts";
 import type { PiEngine } from "../agent/models.ts";
 import { AcpConnectionUnavailable, engineForSpec } from "./acp.ts";
 import { connectionBackgroundAllowed, connectionScopeCurrent, isSubscriptionProvider } from "../agent/subscription-connections.ts";
@@ -343,6 +346,13 @@ export async function handleChatInput(
 	// Both share this whole composition (write-ahead persist, liveness,
 	// steers, usage, extraction) — only the agent differs.
 	const teaching = hasProbeDone(merged);
+	// LEARNING TRACKS (docs/tracks.md §4): a propose_track call in the record
+	// is the PLANNING SEAM — from that message on the chat is a track's
+	// planning chat and every request builds the PLANNER (re-proposals until
+	// Start track, re-plans after). A part chat (teaching/practice role) is
+	// an ordinary session whose prober/teacher carry the part tools.
+	const trackMember = trackOfChat(chatId);
+	const planning = record.kind !== "practice" && hasTrackProposal(merged);
 	// BYOK (owner, 2026-09-22): the conversation chain was resolved by the
 	// turn gate above (chat.model override → strong slot → refused) — the
 	// engine build is pure from here; thinking levels clamp natively.
@@ -415,6 +425,19 @@ export async function handleChatInput(
 					},
 					agentOpts,
 				)
+			: planning
+			? createPlannerAgent(
+					{
+						chatId,
+						chatStore: stores.chatStore,
+						trackStore: stores.trackStore,
+						jobStore: stores.jobStore,
+						spawn: (job, input) => void jobRunner.runJob(job.id, input),
+						searchAvailable,
+						...(graphToolsEnabled(effective) ? { graphStore: stores.graphStore } : {}),
+					},
+					agentOpts,
+				)
 			: teaching
 			? createTeacherAgent(
 					{
@@ -425,6 +448,11 @@ export async function handleChatInput(
 						// The registry drop's signal (2026-09-20): no live engine
 						// = no research tool in the teacher's registry.
 						searchAvailable,
+						// Learning tracks: in a part chat the teacher owns part_done
+						// (+ read_part); the re-plan steer rides the wake pipeline.
+						trackStore: stores.trackStore,
+						trackRole: trackMember?.role ?? null,
+						deliver: (steer) => void deliverJobResult(steer),
 					},
 					agentOpts,
 				)
@@ -443,6 +471,10 @@ export async function handleChatInput(
 						// knowledge graph through tools when the gate opens —
 						// graph master switch AND the agent.graphTools toggle.
 						...(graphToolsEnabled(effective) ? { graphStore: stores.graphStore } : {}),
+						// Learning tracks: a loose chat's prober may propose a
+						// track; a part chat's prober reads earlier parts.
+						trackStore: stores.trackStore,
+						trackRole: trackMember?.role ?? null,
 					},
 					agentOpts,
 				);
@@ -518,7 +550,9 @@ export async function handleChatInput(
 					// PRACTICE (owner, 2026-10-04): practice sessions write nothing —
 					// no extraction, no graph, no coverage (v1: the session itself
 					// is the deliverable).
-					if ((!requestCycle || requestCycle.dispatched) && record.kind !== "practice" && extractionEnabled(effective.graph)) {
+					// PLANNING CHATS (docs/tracks.md §5): excluded from extraction —
+					// their prose is logistics, not knowledge.
+					if ((!requestCycle || requestCycle.dispatched) && record.kind !== "practice" && !planning && extractionEnabled(effective.graph)) {
 						// Fresh per-turn read of the graph section's chunk budget
 						// (extraction-UX redesign, 2026-09-24): the trigger compares
 						// against it and the pipeline's batches share it.

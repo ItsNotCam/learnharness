@@ -148,6 +148,13 @@ const ACTIVITY_LABELS: Record<string, string> = {
 	pdf: "Reading a PDF…",
 	plan_init: "Drawing up the plan…",
 	probe_done: "Concluding the assessment…",
+	// Learning tracks (docs/tracks.md).
+	propose_track: "Proposing a track…",
+	replan_track: "Re-planning the track…",
+	part_done: "Recording the part as done…",
+	read_part: "Reading an earlier part…",
+	list_sessions: "Reading the knowledge map…",
+	list_propositions: "Reading the knowledge map…",
 };
 
 /** The activity label for ONE running tool (owner, streaming round

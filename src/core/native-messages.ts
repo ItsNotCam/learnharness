@@ -74,7 +74,9 @@ export interface LhMarkerMessage {
 		| "practice-thinking"
 		| "practice-next"
 		| "problem-dismissed"
-		| "compaction";
+		| "compaction"
+		| "track-context"
+		| "track-replan";
 	/** The model-facing text ("" for plan blocks — UI-only). */
 	content: string;
 	display: boolean;
@@ -180,6 +182,57 @@ export function newPlanBlockMessage(
 		content: "",
 		display: true,
 		details: { planCallId, block },
+		timestamp: Date.now(),
+	};
+}
+
+// ─── tracks (docs/tracks.md, 2026-11-22) ─────────────────────────────────────
+
+/** The UI payload of a part chat's context marker (the collapsible card). */
+export interface TrackContextDetails {
+	trackId: string;
+	partId: string;
+	role: "teaching" | "practice";
+}
+
+/** A part chat's message[0] — the [Track context] block: the model reads
+ *  `content` (flattened to a user message by toLlmMessages like every
+ *  marker); `details` feeds the transcript's TrackContextCard. The text is
+ *  composed by core/tracks.ts trackContextText. */
+export function newTrackContextMessage(content: string, details: TrackContextDetails): LhMarkerMessage {
+	return {
+		id: newMessageId(),
+		role: "custom",
+		customType: "track-context",
+		content,
+		display: true,
+		details,
+		timestamp: Date.now(),
+	};
+}
+
+/** The UI payload of a re-plan steer (the planning chat's divider). */
+export interface TrackReplanDetails {
+	trackId: string;
+	planningChatId: string;
+	/** The finished part (null = the learner asked). */
+	partId: string | null;
+	partNumber: string | null;
+	partTitle: string | null;
+}
+
+/** The re-plan wake for the planning chat: part_done's side effect (or the
+ *  overview's ASK LH TO RE-PLAN). Deterministic id per part — exactly one
+ *  re-plan per finished part, idempotent re-delivery; learner requests get a
+ *  fresh id each time. Rides the same wake pipeline as the probe handoff. */
+export function newTrackReplanSteer(content: string, details: TrackReplanDetails): LhMarkerMessage {
+	return {
+		id: details.partId ? `steer_track_${details.trackId}_${details.partId}` : `steer_track_${details.trackId}_ask_${Date.now().toString(36)}`,
+		role: "custom",
+		customType: "track-replan",
+		content,
+		display: true,
+		details,
 		timestamp: Date.now(),
 	};
 }
@@ -682,8 +735,12 @@ export function nativeInputCause(message: AgentMessage, history: readonly AgentM
 	if (message.role === "user") return "learner";
 	if (message.role === "system" || message.role === "assistant") return "neutral";
 	if (message.role === "custom") {
-		if (["probe-handoff", "subagent-steer", "subagent-abort"].includes(message.customType)) return "automatic";
-		if (["practice-thinking", "practice-next"].includes(message.customType)) return "learner";
+		if (["probe-handoff", "subagent-steer", "subagent-abort", "track-replan"].includes(message.customType)) return "automatic";
+		// A part chat's context block counts as LEARNER input (docs/tracks.md
+		// §5): the learner opened the session by clicking Start part, so the
+		// opening `continue` on the marker alone is a FOREGROUND turn — never
+		// deferred as automatic work on a subscription connection.
+		if (["practice-thinking", "practice-next", "track-context"].includes(message.customType)) return "learner";
 		return ["graph-context", "plan-block", "problem-dismissed", "compaction"].includes(message.customType) ? "neutral" : "unrecognizable";
 	}
 	if (message.role === "toolResult") {
