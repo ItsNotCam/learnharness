@@ -5,7 +5,6 @@ import { ChevronRightIcon } from "lucide-react";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 import { joinDictation, useDictationTarget } from "@/components/dictation";
-import { useEnterSubmits } from "@/components/enter-submits";
 import { cn } from "@/lib/utils";
 import { repairMathForDisplay } from "@/src/core";
 
@@ -81,7 +80,7 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 	 * means the field is often never focused — the window-level Enter
 	 * (typing surfaces and buttons excluded) submits the trace. Mounted
 	 * while the dock is — collapsed bar included (the trace survives). */
-	useEnterSubmits(submit);
+	// BUTTON-ONLY SUBMIT (owner, 2026-11-23): no window-level Enter.
 
 	/* ── the collapsed bar ── */
 	if (!expanded) {
@@ -140,12 +139,7 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 							onEscape();
 							return;
 						}
-						// Enter SENDS — the single lane (owner round 2, 2026-10-05);
-						// Shift+Enter is the newline, ⌘/Ctrl+Enter the chord too.
-						if (e.key === "Enter" && (!e.shiftKey || e.metaKey || e.ctrlKey)) {
-							e.preventDefault();
-							submit();
-						}
+						// Button-only submit (owner, 2026-11-23): Enter is a newline.
 					}}
 					placeholder="Work here, think out loud."
 					rows={4}
@@ -159,7 +153,7 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 				    field 10 − p-1 (4) = button 6. */}
 				<div className="flex items-center justify-between gap-2 p-1">
 					<span aria-hidden className="pl-1.5 text-xs text-muted-foreground">
-						{compactionRunning ? "compacting session…" : "↵ submits · ⇧↵ newline"}
+						{compactionRunning ? "compacting session…" : "click Submit answer · ↵ newline"}
 					</span>
 					<Button
 						type="button"

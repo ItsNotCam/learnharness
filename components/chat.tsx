@@ -24,7 +24,6 @@ import { AnsweredCard } from "@/components/answered-card";
 import { artifactRenderers } from "@/components/artifacts";
 import { SubagentSteerCard } from "@/components/artifacts/steer-card";
 import { Composer } from "@/components/composer";
-import { useEnterSubmits } from "@/components/enter-submits";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { dockStateKey } from "@/components/dock-state-key";
 import { QueuedSteersBody, type QueuedSteerLine } from "@/components/queued-steers";
@@ -765,7 +764,8 @@ export function Chat({
 	 * self-guards on nextReady, so the listener is inert outside the
 	 * pause — the dock-mounted listeners are gone by then (docks unmount
 	 * when nothing is active; the two never overlap). */
-	useEnterSubmits(sendNext);
+	// BUTTON-ONLY SUBMIT (owner, 2026-11-23): the Next chip is the move-on;
+	// no window-level Enter.
 
 	const syncFromServer = useCallback(async () => {
 		const res = await fetch(`/api/chats/${chatId}`);
@@ -1840,7 +1840,7 @@ export function Chat({
 							onNext={sendNext}
 							placeholder={
 								nextReady
-									? "Ask anything, or press Enter for the next one."
+									? "Ask anything, or click Next for the next one."
 									: trackStage === "proposed"
 										? "Ask LH to change the track…"
 										: trackStage === "planning"
