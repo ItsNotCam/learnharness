@@ -36,9 +36,11 @@ import { trackReplanText } from "../core/contracts.ts";
 import { chainsForSelection, formatChainLine } from "../core/chains.ts";
 import {
 	assignPartNumbers,
+	chatTrackContextOf,
 	deriveTrackView,
 	foldTracks,
 	latestTrackProposal,
+	membershipOf,
 	partDoneOf,
 	trackChatIds,
 	trackContextText,
@@ -101,39 +103,8 @@ export function getTrackView(trackId: string): TrackView | null {
 
 /** A chat's track membership, or null for a loose chat. */
 export function trackOfChat(chatId: string): ChatTrackContext | null {
-	for (const record of trackRecords()) {
-		let role: ChatTrackContext["role"] | null = null;
-		let partId: string | null = null;
-		if (record.planningChatId === chatId) role = "planning";
-		else {
-			for (const part of record.parts) {
-				if (part.teachingChatId === chatId) {
-					role = "teaching";
-					partId = part.id;
-					break;
-				}
-				if (part.practiceChatIds.includes(chatId)) {
-					role = "practice";
-					partId = part.id;
-					break;
-				}
-			}
-		}
-		if (!role) continue;
-		const part = partId ? record.parts.find((p) => p.id === partId) : undefined;
-		return {
-			trackId: record.id,
-			trackTitle: record.title,
-			planningChatId: record.planningChatId,
-			role,
-			partId,
-			partNumber: part?.number ?? null,
-			partTitle: part?.title ?? null,
-			totalParts: record.parts.filter((p) => p.parentPartId === undefined).length,
-			parts: record.parts.map((p) => ({ id: p.id, number: p.number, title: p.title, teachingChatId: p.teachingChatId })),
-		};
-	}
-	return null;
+	const member = membershipOf(trackRecords(), chatId);
+	return member ? chatTrackContextOf(member) : null;
 }
 
 /** The learner's first message of a chat — the brief, verbatim. */

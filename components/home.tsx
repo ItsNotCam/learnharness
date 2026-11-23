@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CornerDownLeftIcon, DumbbellIcon } from "lucide-react";
+import Link from "next/link";
+import { CornerDownLeftIcon, DumbbellIcon, WaypointsIcon, XIcon } from "lucide-react";
 import { GraphView } from "@/components/graph-view";
 import { MinimalHome } from "@/components/minimal-home";
 import { SetupDialog } from "@/components/setup-dialog";
@@ -23,8 +24,12 @@ import type { TurnUsage } from "@/src/core";
 export function Home({
 	initialConfigured,
 	rendering = true,
+	trackFilter = null,
 }: {
 	initialConfigured: boolean;
+	/** Learning tracks (docs/tracks.md §7): /?track=<id> narrows the graph
+	 *  to the track's sessions; the dismissible TRACK pill names it. */
+	trackFilter?: { id: string; title: string; chatIds: string[] } | null;
 	/** GRAPH RENDERING off (owner, 2026-10-06): the home's main view is
 	 * the chains view, not the canvas. Read server-side per navigation —
 	 * changing the setting applies on the next visit home. */
@@ -183,6 +188,7 @@ export function Home({
 						practiceSelection={pickedIds}
 						onPracticeSelectionChange={setPracticeProps}
 						onChainSelectClose={() => setChainSelectOpen(false)}
+						sessionFilter={trackFilter}
 					/>
 				) : (
 					<MinimalHome
@@ -203,6 +209,19 @@ export function Home({
 				<div className="pointer-events-auto">
 					<SidebarToggle />
 				</div>
+				{/* The TRACK pill (docs/tracks.md §7): the graph is narrowed to one
+				    track's sessions; × returns to the whole graph. */}
+				{trackFilter && (
+					<div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-card/90 pl-2.5 pr-1 py-0.5 font-mono text-[11px] uppercase tracking-[0.06em] text-foreground/80" data-testid="graph-track-pill">
+						<WaypointsIcon className="size-3.5" style={{ color: "var(--lh-track-accent)" }} aria-hidden />
+						<Link href={`/track/${encodeURIComponent(trackFilter.id)}`} className="max-w-[40ch] truncate no-underline hover:text-foreground">
+							Track · {trackFilter.title}
+						</Link>
+						<Link href="/" aria-label="Show the whole graph" className="rounded-full p-1 text-muted-foreground hover:text-foreground">
+							<XIcon className="size-3" aria-hidden />
+						</Link>
+					</div>
+				)}
 			</header>
 
 			{/* New session — same floating blob as the chat composer, docked

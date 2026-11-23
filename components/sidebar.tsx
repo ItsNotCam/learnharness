@@ -640,13 +640,14 @@ function SessionsSidebar() {
 		const rows = flattenTrackTree(tree, {
 			isOpen: (key, fallback) => openKeys[key] ?? fallback,
 			activeChatId,
+			activeTrackId,
 			filter: kindFilter,
 		}).map((row): SidebarItem => ({ type: "tree", row }));
 		const loose = tree.loose
 			.filter((c) => kindFilter === "all" || (c.kind ?? "teach") === "teach")
 			.map((c): SidebarItem => ({ type: "chat", chat: c }));
 		return [...rows, ...loose];
-	}, [chats, tracks, tree, query, kindFilter, openKeys, activeChatId]);
+	}, [chats, tracks, tree, query, kindFilter, openKeys, activeChatId, activeTrackId]);
 
 	/** Where an item goes when opened (click or the search walk's Enter). */
 	const openItem = useCallback(

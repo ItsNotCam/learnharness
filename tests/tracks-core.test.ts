@@ -26,6 +26,7 @@ import {
 	trackTree,
 	unlocksText,
 	validateParts,
+	rewritePartLinks,
 } from "../src/core/tracks.ts";
 
 const T = "trk_1";
@@ -421,6 +422,10 @@ describe("part:// links", () => {
 		assert.deepEqual(parsePartLink("part://p2"), { partId: "p2", messageId: null });
 		assert.equal(parsePartLink("https://example.com"), null);
 		assert.equal(parsePartLink("part://"), null);
+		// The pipeline form (the renderer rewrites part:// to a relative path).
+		assert.deepEqual(parsePartLink("/part/p2/msg_abc"), { partId: "p2", messageId: "msg_abc" });
+		assert.equal(parsePartLink("/part/"), null);
+		assert.equal(rewritePartLinks("See [the field](part://p2/msg_abc) and [x](https://a.b)."), "See [the field](/part/p2/msg_abc) and [x](https://a.b).");
 		const ctx = { parts: [{ id: "p2", number: "2", title: "SDFs in a texture", teachingChatId: "chat_p2" }, { id: "p9", number: "9", title: "Unstarted", teachingChatId: null }] };
 		assert.deepEqual(partLinkHref({ partId: "p2", messageId: "msg_abc" }, ctx), { href: "/chat/chat_p2#message-msg_abc", label: "Taught in part 2 · SDFs in a texture" });
 		assert.deepEqual(partLinkHref({ partId: "p2", messageId: null }, ctx), { href: "/chat/chat_p2", label: "Taught in part 2 · SDFs in a texture" });
@@ -481,6 +486,12 @@ describe("trackTree / flattenTrackTree — the sidebar", () => {
 
 		const closed = flattenTrackTree(tree, { isOpen: () => false, activeChatId: null, filter: "all" });
 		assert.deepEqual(closed.map((r) => r.kind), ["track"], "a stored collapse hides everything under the track");
+
+		// The overview page of a track opens it too (the sidebar's /track/<id> route).
+		const quiet = { ...view, parts: view.parts.map((p) => (p.status === "in-progress" ? { ...p, status: "ready" as const, teaching: null } : p)) };
+		const quietTree = trackTree([quiet], chats);
+		assert.equal((flattenTrackTree(quietTree, { isOpen: (_k, fb) => fb, activeChatId: null, filter: "all" })[0] as { open: boolean }).open, false, "nothing in progress, nothing active: closed");
+		assert.equal((flattenTrackTree(quietTree, { isOpen: (_k, fb) => fb, activeChatId: null, activeTrackId: quiet.id, filter: "all" })[0] as { open: boolean }).open, true, "its overview is open: the track opens");
 
 		assert.deepEqual(flattenTrackTree(tree, { isOpen: () => true, activeChatId: null, filter: "practice" }), []);
 	});

@@ -8,8 +8,10 @@ import { APP_IDENTITY, piEngineFor, type PiEngine } from "./models.ts";
 import { effectivePromptSegments } from "./prompt-segments.ts";
 import {
 	askUserQuestionTool,
+	createPlannerTools,
 	createProberTools,
 	createTeacherTools,
+	type PlannerToolContext,
 	type ProbeDoneContext,
 	type ProberToolContext,
 	type TeacherToolContext,
@@ -47,8 +49,9 @@ import { usageWasAdmitted } from "./subscription-request-cycle.ts";
  */
 
 /** Which agent's prompt directory to compose. Practice (2026-10-04)
- *  composes ONLY its own directory — see prompt-segments.ts. */
-export type AgentKind = "prober" | "teacher" | "practice";
+ *  composes ONLY its own directory — see prompt-segments.ts. Planner
+ *  (docs/tracks.md §4): the planning chat's agent after the proposal. */
+export type AgentKind = "prober" | "teacher" | "practice" | "planner";
 
 // P2 (2026-09-19): segment discovery + override resolution live in ONE
 // canonical place now — src/store/prompt-overrides.ts (listSourceSegments
@@ -88,6 +91,7 @@ const composedInstructions: Record<AgentKind, string> = {
 	prober: composeInstructions("prober"),
 	teacher: composeInstructions("teacher"),
 	practice: composeInstructions("practice"),
+	planner: composeInstructions("planner"),
 };
 
 // Money channel (wave 4): the chat-handler passes a per-turn collector;
@@ -322,8 +326,24 @@ export function createPracticeAgent(ctx: PracticeToolContext, opts: AgentBuildOp
 	return baseAgentOptions("practice", opts, Object.values(tools));
 }
 
+/**
+ * The PLANNER (learning tracks, docs/tracks.md §4): the planning chat's
+ * agent from the proposal on — the handler builds it whenever the record
+ * carries a propose_track call (hasTrackProposal, the planning seam). It
+ * re-proposes until the learner starts the track ("Change something"),
+ * then re-plans after every finished part (the track-replan wake) and on
+ * request. No quizzing, no teaching: ask + files + research/pdf + the graph
+ * reader + the stage's track tools. Runs on the chat's conversation engine
+ * like every other agent (no new model role).
+ */
+export function createPlannerAgent(ctx: PlannerToolContext, opts: AgentBuildOptions = {}) {
+	const tools = opts.tools ?? createPlannerTools(ctx, opts.toolToggles);
+	return baseAgentOptions("planner", opts, Object.values(tools));
+}
+
 export type ProberAgent = ReturnType<typeof createProberAgent>;
 export type TeacherAgent = ReturnType<typeof createTeacherAgent>;
 export type PracticeAgent = ReturnType<typeof createPracticeAgent>;
-export type TeachingAgent = ProberAgent | TeacherAgent | PracticeAgent;
+export type PlannerAgent = ReturnType<typeof createPlannerAgent>;
+export type TeachingAgent = ProberAgent | TeacherAgent | PracticeAgent | PlannerAgent;
 

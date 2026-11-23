@@ -42,6 +42,13 @@ const PROMPTS_DIR = path.join(PATHS.root, "src", "agent", "prompts");
  *  (practice has no such tools). */
 const PRACTICE_SHARED_FRAGMENTS = ["10-voice.md", "15-accuracy.md", "16-mental-model.md", "40-formatting.md"];
 
+/** Shared fragments the PLANNER composes (learning tracks, docs/tracks.md
+ *  §4): the one voice/accuracy/mental-model law, the learner-file doctrine
+ *  (it reads briefs and sources) and the formatting guide. The question-tool
+ *  mechanics, the confidence doctrine and the part-chat fragment stay out —
+ *  the planner holds none of those tools and teaches nothing. */
+const PLANNER_SHARED_FRAGMENTS = ["10-voice.md", "15-accuracy.md", "16-mental-model.md", "30-learner-files.md", "40-formatting.md"];
+
 /** Absolute path for an override file (unchecked — validate first). */
 function overrideFileFor(segmentPath: string): string {
 	return path.join(PROMPTS_OVERRIDE_DIR, ...segmentPath.split("/"));
@@ -84,7 +91,8 @@ export function listSourceSegments(agent: PromptAgent): Array<{ path: string; sh
 	const sharedDir = path.join(PROMPTS_DIR, "shared");
 	if (fs.existsSync(sharedDir)) {
 		// The practice allowlist (owner, 2026-10-04 late): formatting only.
-		const allow = agent === "practice" ? PRACTICE_SHARED_FRAGMENTS : null;
+		// The planner's (docs/tracks.md §4): voice/accuracy/model + files + formatting.
+		const allow = agent === "practice" ? PRACTICE_SHARED_FRAGMENTS : agent === "planner" ? PLANNER_SHARED_FRAGMENTS : null;
 		const sharedFragments = fs
 			.readdirSync(sharedDir)
 			.filter((f) => FRAGMENT_RE.test(f) && (allow === null || allow.includes(f)))
@@ -127,7 +135,7 @@ export function effectivePromptSegments(
 /** Every known segment path across both agents (route validation). */
 export function allSegmentPaths(): string[] {
 	const paths = new Set<string>();
-	for (const agent of ["prober", "teacher", "practice"] as const) {
+	for (const agent of ["prober", "teacher", "practice", "planner"] as const) {
 		for (const segment of listSourceSegments(agent)) paths.add(segment.path);
 	}
 	return [...paths].sort();

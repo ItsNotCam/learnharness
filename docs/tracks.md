@@ -172,16 +172,23 @@ planning chat.
    from `read_part`); the markdown renderer turns it into "TAUGHT IN PART 2 ·
    <title>" deep-linking to `/chat/<chatId>#message-<id>` (the existing message
    anchors).
-4. **Proposal view** — the planning chat renders its transcript as the mockup
-   once a proposal exists: kicker NEW TRACK, the proposed title, phase PLACEMENT;
-   YOUR GOAL · PASTED BRIEF (first message, SHOW FULL BRIEF); LH's explanation;
-   PLACEMENT PROBE (N questions · done, findings as ALREADY HELD / STARTS LOW,
-   SHOW QUESTIONS reveals the answered cards); PROPOSED TRACK (mini DAG + the
-   numbered list with each part's why and START / AFTER 1 / AFTER 2 AND 4;
-   "LEFT OUT, PER YOUR BRIEF"); Start track / Change something; the composer
-   reads "Ask LH to change the track…". After start the same page shows the
-   track's re-plans and OPEN TRACK →. The question dock keeps working (the
-   planner may ask).
+4. **Proposal view** — the planning chat once a proposal exists: the header
+   reads NEW TRACK over the proposed title with the phase chip PLACEMENT, and
+   the transcript stays the transcript (the brief is the learner's first
+   message, the placement questions are the answered cards above) — so the
+   mockup's SHOW FULL BRIEF / SHOW QUESTIONS buttons, which only make sense
+   when the transcript is hidden, are not built (implementation ruling,
+   2026-11-22). The `propose_track` call renders as the PROPOSED TRACK card
+   where it was made: LH's explanation, the findings as ALREADY HELD / STARTS
+   LOW, the mini DAG (starts read "1 · START"), the numbered list with each
+   part's why and START / AFTER 1 / AFTER 2 AND 4, "LEFT OUT, PER YOUR BRIEF",
+   and — on the LATEST clean proposal only — Start track / Change something
+   (older proposals read "Superseded"); the composer reads "Ask LH to change
+   the track…". After start the header reads TRACK › PLANNING, the chip
+   PLANNING, the card's actions become TRACK STARTED · OPEN TRACK →, every
+   `replan_track` call renders as a RE-PLANNED card (note + what changed) and
+   the re-plan wake as a "RE-PLAN · AFTER PART N" divider. The question dock
+   keeps working (the planner may ask).
 5. **Graph** — `/?track=<id>` filters the canvas to nodes born in the track's
    sessions (a dismissible TRACK pill in the chrome); the overview links to it.
 
@@ -218,6 +225,44 @@ Golden-fixture law (`tests/fixtures/golden-data/README.md`): the new marker kind
 (`track-context`, `track-replan`) join the EXPECTED coverage list only when real
 records exist — after the owner's first live track, copy its planning chat and
 one part chat in.
+
+### Implementation notes (2026-11-22, delegated rulings taken while building)
+
+- **Reading order is canonical**: wherever parts are listed (the view, the
+  context block, the proposal card) a split parent is followed at once by its
+  sub-parts — "5, 5a, 5b, 6, 7" — whatever order the re-plan named them in
+  (`canonicalPartOrder`). The ledger stores what the planner sent.
+- **The planner's prompt** composes the shared base, `planner/10-track-planning.md`
+  and a CURATED shared appendix (voice, accuracy, mental model, learner files,
+  formatting) — never the question-tool mechanics or the part-chat fragment it
+  has no tools for. `shared/35-track-parts.md` composes into prober and teacher
+  always and is written conditionally ("a session that opens with a
+  `[Track context]` block…"); practice stays out (its allowlist is unchanged).
+- **Tool registration follows the chat's role** (`trackStore` + `trackRole` on
+  the prober/teacher contexts): a loose chat's prober gets `propose_track`; a
+  part chat's prober and teacher get `read_part`, the teacher also `part_done`
+  (always-on like `probe_done`); a planning chat's prober gets neither — the
+  planner owns it from the proposal on (`hasTrackProposal` is the construction
+  seam). The planner's stage tools (`propose_track` before start, `replan_track`
+  + `read_part` after) are always-on too. Every gate reads the ledger and the
+  chat records FRESH per call — Start track can land mid-turn.
+- **`read_part` windows** ~24k characters (≈6k tokens) of `TEACHER [msg] …`
+  passages per call and names the continuation offset; at least one passage
+  always fits. Passages are the assistant messages' text blocks — tool calls,
+  thinking and the learner's side are never part of a passage.
+- **`part_done` renders** as a card in the part chat (the summary the track
+  re-plans from, and what stayed shaky), with OPEN TRACK →.
+- **The TRACK button** sits beside PLAN in the top bar of every track chat
+  (planning included, once the track exists); the breadcrumb rides above the
+  title inside the same 60px bar (title steps down one size to make room).
+- **The right rail** renders on xl screens only — the overview is one click
+  away through the TRACK button at every width.
+- **The graph filter** keeps the propositions any of the track's chats touched
+  plus every implication node whose premises and conclusion all survive — the
+  track's own subgraph with its chains intact — composed with the search query.
+- **Planning chats never extract** (the handler skips the extraction trigger
+  for a chat with a proposal), and their phase chip reads PLACEMENT / PLANNING
+  instead of the probe→teach arc.
 
 ## 11. Deferred
 

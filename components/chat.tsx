@@ -66,8 +66,12 @@ import { SessionMessageNavigation } from "@/components/session-navigation";
 import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
+import { TrackContextCard, TrackReplanDivider, type TrackContextData } from "@/components/track-cards";
+import { TrackChatContext } from "@/components/track-context";
+import { TrackRail } from "@/components/track-rail";
 import { TopBar } from "@/components/top-bar";
-import type { ArtifactPartProps, JobRecord, Phase3, QuestionAnswerData, TurnUsage, SessionPricing } from "@/src/core";
+import type { ArtifactPartProps, ChatTrackContext, JobRecord, Phase3, QuestionAnswerData, TurnUsage, SessionPricing } from "@/src/core";
+import { hasTrackProposal, latestTrackProposal } from "@/src/core";
 import type { LhViewMessage } from "@/src/core";
 import { PhaseChip, PhaseDivider } from "@/components/phase-divider";
 import {
@@ -223,10 +227,15 @@ export function Chat({
 	initialConfigured = false,
 	kind = "teach",
 	initialHighlights = EMPTY_HIGHLIGHTS,
+	track = null,
 }: {
 	chatId: string;
 	title: string;
 	initialMessages: LhMessage[];
+	/** Learning tracks (docs/tracks.md §7): the chat's track membership,
+	 *  resolved server-side — null for a loose chat. Drives the breadcrumb,
+	 *  the TRACK button, the rail and the part:// chip resolver. */
+	track?: ChatTrackContext | null;
 	/** The lesson's saved highlights (fork feature), from the server record. */
 	initialHighlights?: LessonHighlight[];
 	/** The session kind (practice sessions, owner 2026-10-04): practice
@@ -570,6 +579,20 @@ export function Chat({
 	// color-coded dotted divider at each boundary; the header chip reads the
 	// session's current phase.
 	const phases = useMemo(() => phaseTimeline(messages), [messages]);
+
+	// LEARNING TRACKS (docs/tracks.md §7): a planning chat carries a
+	// propose_track call — before Start track its header reads NEW TRACK ·
+	// PLACEMENT and the composer invites changes; after, TRACK › PLANNING.
+	// The latest CLEAN proposal is the one whose card carries the actions.
+	const proposed = useMemo(() => hasTrackProposal(nativeMessages), [nativeMessages]);
+	const latestProposalCallId = useMemo(() => latestTrackProposal(nativeMessages)?.callId ?? null, [nativeMessages]);
+	const trackStage: "none" | "proposed" | "planning" | "part" = track
+		? track.role === "planning"
+			? "planning"
+			: "part"
+		: proposed
+			? "proposed"
+			: "none";
 
 	const [text, setText] = useState("");
 	/* The composer's value MIRROR ("nothing gets lost" round, owner
@@ -1232,6 +1255,14 @@ export function Chat({
 				openSetup: () => setSetupOpen(true),
 			}}
 		>
+		<TrackChatContext.Provider
+			value={{
+				chatId,
+				track,
+				latestProposalCallId,
+				focusComposer: () => composerInputRef.current?.focus(),
+			}}
+		>
 		<SessionMermaidContext.Provider
 			value={{
 				openMermaid: setMermaidFocus,
@@ -1311,8 +1342,35 @@ export function Chat({
 								setTitleDraft(titleText);
 								setRenaming(true);
 							}}
-							className="lh-no-drag -mx-1.5 min-w-4 shrink cursor-text truncate rounded-md px-1.5 text-left font-title text-3xl tracking-tight transition-colors hover:bg-accent"
+							className={cn(
+								"lh-no-drag -mx-1.5 min-w-4 shrink cursor-text truncate rounded-md px-1.5 text-left font-title tracking-tight transition-colors hover:bg-accent",
+								trackStage === "none" ? "text-3xl" : "text-2xl leading-tight",
+							)}
 						>
+							{trackStage !== "none" && (
+								/* The breadcrumb (docs/tracks.md §7, the Session mockup):
+								   TRACK NAME › PART N OF M › TEACHING — a mono line above
+								   the title. */
+								<span data-testid="track-breadcrumb" className="mb-0.5 flex items-center gap-2 font-mono text-[11px] font-normal uppercase tracking-[0.06em] text-muted-foreground">
+									{track ? (
+										<>
+											<span className="truncate">{track.trackTitle}</span>
+											<span aria-hidden>›</span>
+											{track.role === "planning" ? (
+												<span>Planning</span>
+											) : (
+												<>
+													<span className="shrink-0">Part {track.partNumber} of {track.totalParts}</span>
+													<span aria-hidden>›</span>
+													<span>{track.role === "practice" ? "Practice" : "Teaching"}</span>
+												</>
+											)}
+										</>
+									) : (
+										<span>New track</span>
+									)}
+								</span>
+							)}
 							{titleText}
 							</button>
 						</Hint>
@@ -1323,6 +1381,21 @@ export function Chat({
 					)}
 					{/* Lesson highlights toggle (fork feature): icon + count. */}
 					<HighlightsChip store={highlightsStore} />
+					{/* The TRACK button (docs/tracks.md §7): a part chat's way back
+					    to its overview, beside PLAN; the planning chat has it once
+					    the track exists. */}
+					{track && (
+						<Hint label="Open the track" side="bottom">
+							<a
+								href={`/track/${encodeURIComponent(track.trackId)}`}
+								data-testid="track-chip"
+								className="lh-no-drag flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border/80 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground no-underline transition-colors hover:border-border hover:text-foreground"
+							>
+								<WaypointsIcon className="size-3.5" style={{ color: "var(--lh-track-accent)" }} aria-hidden />
+								Track
+							</a>
+						</Hint>
+					)}
 					{/* The plan chip (owner, plan-placement round): session-level
 					    structure beside the phase chip — access to the full-DAG popup
 					    at every width; the marginalia is the wide-screen glance view. */}
@@ -1361,6 +1434,17 @@ export function Chat({
 						>
 							<DumbbellIcon className="size-3" />
 							Practice
+						</span>
+					) : trackStage === "proposed" || trackStage === "planning" ? (
+						/* A planning chat has no probe→teach arc: PLACEMENT while the
+						   proposal waits, PLANNING once the track runs (docs/tracks.md §7). */
+						<span
+							data-testid="phase-chip"
+							data-phase={trackStage === "proposed" ? "placement" : "planning"}
+							aria-hidden="true"
+							className="pointer-events-none flex shrink-0 select-none items-center text-xs font-medium uppercase tracking-wide text-muted-foreground"
+						>
+							{trackStage === "proposed" ? "Placement" : "Planning"}
 						</span>
 					) : (
 						<PhaseChip phase={phases.at(-1) ?? "probe"} />
@@ -1415,6 +1499,14 @@ export function Chat({
 										switch (part.type) {
 											case "data-graph-context":
 												return <GraphContextCard key={pi} data={part.data as GraphContextData} />;
+											case "data-track-context":
+												// A part chat's message[0] (docs/tracks.md §5): the context
+												// block as a collapsible card, the graph-context idiom.
+												return <TrackContextCard key={pi} data={part.data as TrackContextData} />;
+											case "data-track-replan":
+												// The re-plan wake in the planning chat (§6): a labeled
+												// divider — scaffolding, never a bubble.
+												return <TrackReplanDivider key={pi} data={part.data as { partNumber: string | null; partTitle: string | null }} />;
 											case "data-compaction":
 												return <CompactionMomentDivider key={pi} data={part.data as CompactionDividerData} />;
 											case "data-compaction-cut":
@@ -1745,7 +1837,15 @@ export function Chat({
 							// applies.
 							nextProblem={nextReady}
 							onNext={sendNext}
-							placeholder={nextReady ? "Ask anything, or press Enter for the next one." : undefined}
+							placeholder={
+								nextReady
+									? "Ask anything, or press Enter for the next one."
+									: trackStage === "proposed"
+										? "Ask LH to change the track…"
+										: trackStage === "planning"
+											? "Ask LH about the track, or to re-plan it…"
+											: undefined
+							}
 						/>
 					}
 					onSubmitAnswer={(output) => {
@@ -1791,11 +1891,21 @@ export function Chat({
 				/>
 				</div>
 				<HighlightsPanel store={highlightsStore} nav={highlightsNav} anchors={highlightAnchors} rowRef={highlightsRowRef} />
+				{/* The right rail (docs/tracks.md §7): WHERE YOU ARE in the track —
+				    part chats only, wide screens only (the overview is one click
+				    away through the TRACK button). The session's plan marginalia
+				    rides it when a plan exists. */}
+				{track && track.role !== "planning" && (
+					<div className="hidden min-h-0 xl:flex" data-testid="track-rail-slot">
+						<TrackRail track={track} plan={hasPlan ? <PlanMarginalia messages={messages} /> : undefined} />
+					</div>
+				)}
 				</div>
 			</div>
 		</div>
 		</JobsContext.Provider>
 		</SessionMermaidContext.Provider>
+		</TrackChatContext.Provider>
 		{/* The BYOK setup flow (owner, 2026-09-22): one mount serves the
 		    persistent CTA, the refused-send interception, and the job cards'
 		    deep-link. Save keeps the draft in the composer — it never sends

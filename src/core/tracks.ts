@@ -550,6 +550,97 @@ export function hasPartDone(messages: readonly LhMessage[]): boolean {
 	return partDoneOf(messages) !== null;
 }
 
+// ─── a chat's membership ─────────────────────────────────────────────────────
+
+export interface TrackMembership {
+	record: TrackRecord;
+	role: ChatTrackContext["role"];
+	/** The part this chat belongs to (teaching/practice roles). */
+	part: TrackPart | null;
+}
+
+/** Which track a chat belongs to, and as what — the one search behind the
+ *  chat page's context, the tools' gates and the sidebar's ownership. Null
+ *  for a loose chat. */
+export function membershipOf(records: readonly TrackRecord[], chatId: string): TrackMembership | null {
+	for (const record of records) {
+		if (record.planningChatId === chatId) return { record, role: "planning", part: null };
+		for (const part of record.parts) {
+			if (part.teachingChatId === chatId) return { record, role: "teaching", part };
+			if (part.practiceChatIds.includes(chatId)) return { record, role: "practice", part };
+		}
+	}
+	return null;
+}
+
+/** The chat page's context from a membership (ChatTrackContext). */
+export function chatTrackContextOf(member: TrackMembership): ChatTrackContext {
+	const { record, role, part } = member;
+	return {
+		trackId: record.id,
+		trackTitle: record.title,
+		planningChatId: record.planningChatId,
+		role,
+		partId: part?.id ?? null,
+		partNumber: part?.number ?? null,
+		partTitle: part?.title ?? null,
+		totalParts: record.parts.filter((p) => p.parentPartId === undefined).length,
+		parts: canonicalPartOrder(record.parts).map((p) => ({ id: p.id, number: p.number, title: p.title, teachingChatId: p.teachingChatId })),
+	};
+}
+
+// ─── read_part: a part's teaching prose, windowed ────────────────────────────
+
+/** One teacher passage: an assistant message's prose, by message id. */
+export interface PartPassage {
+	messageId: string;
+	text: string;
+}
+
+/** The teacher's prose of a part chat, passage per assistant message (text
+ *  blocks joined; tool calls, thinking and the learner's side dropped).
+ *  Message ids ride along — the citation targets of part://<part>/<msg>. */
+export function partPassages(messages: readonly LhMessage[]): PartPassage[] {
+	const out: PartPassage[] = [];
+	for (const m of messages) {
+		if ((m as { role?: string }).role !== "assistant") continue;
+		const content = (m as { content?: unknown }).content;
+		if (!Array.isArray(content)) continue;
+		const text = (content as Array<{ type?: string; text?: string }>)
+			.filter((b) => b.type === "text" && typeof b.text === "string")
+			.map((b) => b.text!.trim())
+			.filter(Boolean)
+			.join("\n\n");
+		if (text) out.push({ messageId: (m as { id?: string }).id ?? "", text });
+	}
+	return out;
+}
+
+/** The read_part window: ~4 chars per token. */
+export const READ_PART_BUDGET_CHARS = 24_000;
+
+/** A window of passages from `offset`, as the tool returns it: `TEACHER
+ *  [msg] …` blocks under the budget, plus the continuation offset (null =
+ *  that was the end). At least one passage always fits, however long. */
+export function readPartWindow(
+	passages: readonly PartPassage[],
+	offset: number,
+	budgetChars = READ_PART_BUDGET_CHARS,
+): { text: string; nextOffset: number | null; total: number } {
+	const start = Math.max(0, Math.min(offset, passages.length));
+	const blocks: string[] = [];
+	let used = 0;
+	let i = start;
+	for (; i < passages.length; i++) {
+		const p = passages[i]!;
+		const block = `TEACHER [${p.messageId}]\n${p.text}`;
+		if (blocks.length > 0 && used + block.length > budgetChars) break;
+		blocks.push(block);
+		used += block.length;
+	}
+	return { text: blocks.join("\n\n---\n\n"), nextOffset: i < passages.length ? i : null, total: passages.length };
+}
+
 // ─── the part chat's context block ───────────────────────────────────────────
 
 /** The model-facing [Track context] block (the marker's content). Written for
@@ -635,12 +726,27 @@ export function trackContextText(args: {
 
 /** The teacher's citation link target: part://<partId>/<messageId>. */
 export const PART_LINK_PREFIX = "part://";
+/** The same link as the markdown pipeline carries it: a relative path. The
+ *  renderer's three URL gates (react-markdown's urlTransform, rehype-
+ *  sanitize's protocol schema, rehype-harden) all pass relative paths and
+ *  all strip an unknown `part:` protocol, so the model-facing syntax is
+ *  rewritten to this form at the renderer boundary (rewritePartLinks). */
+export const PART_LINK_PATH = "/part/";
 
-/** Parse a part:// link; null for anything else. The message id may be
- *  absent (a link to the part's session, not a passage). */
+/** `[text](part://a/b)` → `[text](/part/a/b)` — applied to assistant prose
+ *  before markdown parsing (the model writes the documented `part://`
+ *  form; the pipeline sees a relative path it lets through). */
+export function rewritePartLinks(markdown: string): string {
+	return markdown.replaceAll(`](${PART_LINK_PREFIX}`, `](${PART_LINK_PATH}`);
+}
+
+/** Parse a part link in either form; null for anything else. The message id
+ *  may be absent (a link to the part's session, not a passage). */
 export function parsePartLink(href: string | undefined): { partId: string; messageId: string | null } | null {
-	if (!href || !href.startsWith(PART_LINK_PREFIX)) return null;
-	const rest = href.slice(PART_LINK_PREFIX.length);
+	if (!href) return null;
+	const prefix = href.startsWith(PART_LINK_PREFIX) ? PART_LINK_PREFIX : href.startsWith(PART_LINK_PATH) ? PART_LINK_PATH : null;
+	if (!prefix) return null;
+	const rest = href.slice(prefix.length);
 	const slash = rest.indexOf("/");
 	const partId = slash === -1 ? rest : rest.slice(0, slash);
 	if (partId.length === 0) return null;
@@ -757,6 +863,8 @@ export function flattenTrackTree(
 		/** The learner's stored choice for a key, or the given default. */
 		isOpen: (key: string, fallback: boolean) => boolean;
 		activeChatId: string | null;
+		/** The track whose OVERVIEW is open (/track/<id>) — open by default too. */
+		activeTrackId?: string | null;
 		/** TEACHING hides practice sessions; PRACTICE shows nothing from here
 		 *  (the component lists practice chats flat); ALL shows everything. */
 		filter: "teach" | "practice" | "all";
@@ -766,7 +874,7 @@ export function flattenTrackTree(
 	if (opts.filter === "practice") return rows;
 	for (const node of tree.tracks) {
 		const trackKey = trackOpenKey(node.track.id);
-		const active = node.track.chatIds.includes(opts.activeChatId ?? "");
+		const active = node.track.chatIds.includes(opts.activeChatId ?? "") || node.track.id === (opts.activeTrackId ?? null);
 		const open = opts.isOpen(trackKey, active || node.track.parts.some((p) => p.status === "in-progress"));
 		rows.push({ kind: "track", key: trackKey, depth: 0, node, open });
 		if (!open) continue;

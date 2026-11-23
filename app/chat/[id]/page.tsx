@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Chat } from "@/components/chat";
 import { slotsConfigured } from "@/src/core";
-import { compactionInFlight, getChat, isTurnRunning, readSettingsRecord } from "@/src/server";
+import { compactionInFlight, getChat, isTurnRunning, readSettingsRecord, trackOfChat } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +37,9 @@ export default async function ChatPage({
 			// attach (busy shimmer + poll), never resurrect the stale record.
 			initiallyInFlight={isTurnRunning(chat.id)}
 			initiallyCompacting={compactionInFlight(chat.id)}
+			// Learning tracks (docs/tracks.md §7): the chat's membership — the
+			// breadcrumb, the TRACK button, the rail and the part:// chips.
+			track={trackOfChat(chat.id)}
 		/>
 	);
 }
