@@ -150,7 +150,8 @@ describe("render smoke tests", () => {
 		assert.match(html, /Why this answer\? Whatever comes to mind/, "placeholder invites, not apologizes (owner, placeholder round 2026-10-07)");
 		assert.ok(!html.includes("optional"), "the field is never called optional");
 		assert.match(html, /Submit answer/, "send becomes Submit answer");
-		assert.match(html, /click Submit answer · ↵ newline/, "button-only submit is discoverable (owner, 2026-11-23)");
+		// Nothing picked yet: the hint names why Submit is disabled (owner, 2026-11-23).
+		assert.match(html, /pick an answer to submit · ↵ newline/, "the dead button explains itself");
 		// The v1 desync bug: options are buttons with ARIA roles, not native inputs.
 		assert.ok(!html.includes('type="radio"'), "no native radio inputs");
 		assert.ok(html.includes('role="radio"'), "button-based radio role present");

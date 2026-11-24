@@ -921,7 +921,16 @@ function QuestionDockForm({
 					)}
 					<div className="flex items-center justify-between gap-2 p-1">
 						<span aria-hidden className="pl-1.5 text-xs text-muted-foreground">
-								{compactionRunning ? "compacting session…" : "click Submit answer · ↵ newline"}
+								{/* The hint names WHY the button is dead (owner report
+								    2026-11-23: "sometimes I can't click it"): nothing
+								    counts as an answer yet, or a compaction holds the gate. */}
+								{compactionRunning
+									? "compacting session…"
+									: !canSubmit
+										? qd.mode === "text"
+											? "type an answer to submit · ↵ newline"
+											: "pick an answer to submit · ↵ newline"
+										: "click Submit answer · ↵ newline"}
 						</span>
 						<Button
 							type="submit"
